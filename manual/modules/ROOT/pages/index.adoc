@@ -6,9 +6,9 @@ Use Voyage Data Recorder to record and play NMEA files.
 
 == Links
 
-* Source: https://github.com/nohal/vdr_pi[Github Nohal Repository, use Packaging Branch]
-* Source: https://github.com/SethDart/vdr_pi[Github Seth-dart Original Repository]
-* Maintenance Source: https://github.com/rgleason/vdr_pi
+* Maintenance Source: https://github.com/rgleason/vdr_pi  Current
+* Source: https://github.com/nohal/vdr_pi[Github Nohal Repository]
+* Old Source: https://github.com/SethDart/vdr_pi[Github Seth-dart Original Repository]
 * Download: https://opencpn.org/OpenCPN/plugins/vdr.html[Website Download]
 * Forum: http://www.cruisersforum.com/forums/f134/vdr-plugin-59808.html[VDR Plugin Thread]
 
