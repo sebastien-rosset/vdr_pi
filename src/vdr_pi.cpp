@@ -319,6 +319,11 @@ void vdr_pi::OnToolbarToolCallback(int id)
                   m_recording = false;
 
                   SetToolbarItemState( id, false );
+#ifdef __ANDROID__
+                  bool AndroidSecureCopyFile(wxString in, wxString out);
+                  AndroidSecureCopyFile(m_temp_outfile, m_final_outfile);
+                  ::wxRemoveFile(m_temp_outfile);
+#endif
             }
             else
             {
@@ -333,8 +338,19 @@ void vdr_pi::OnToolbarToolCallback(int id)
                     idir = *GetpPrivateApplicationDataLocation();
                   }
 
+#ifdef __ANDROID__
+                  wxString file_uniq = wxString("vdr-");
+                  wxDateTime now = wxDateTime::Now();
+                  wxString uniq = now.FormatISOCombined();
+                  ifile = file_uniq + uniq + ".txt";
+                  idir = "/storage/emulated/0/Android/Documents";
+
+                  m_temp_outfile = *GetpPrivateApplicationDataLocation();
+                  m_temp_outfile += wxString("/vdr_temp.txt");
+#endif
                   wxString file;
-                  int response = PlatformFileSelectorDialog( GetOCPNCanvasWindow(), &file, _("Create a file to Record"), idir, ifile, _T("*.*") );
+                  int response = PlatformFileSelectorDialog( GetOCPNCanvasWindow(),
+                                                            &file, _("Create a file to Record"), idir, ifile, _T("*.*") );
 
                   if( response != wxID_OK )
                   {
@@ -343,8 +359,10 @@ void vdr_pi::OnToolbarToolCallback(int id)
                   }
                   m_ofilename.Clear();
                   m_ofilename = file;
-
-                  //m_ostream.Open( m_ofilename, wxFile::write_append );
+#ifdef  __ANDROID__
+                  m_final_outfile = file;
+                  m_ofilename = m_temp_outfile;
+#endif
                   m_ostream.Open( m_ofilename, wxFile::write );
                   m_recording = true;
 
