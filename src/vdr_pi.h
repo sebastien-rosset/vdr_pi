@@ -94,7 +94,9 @@ private:
       bool              m_recording;
       wxTextFile        m_istream;
       wxFile            m_ostream;
-	  wxBitmap          m_panelBitmap;
+      wxBitmap          m_panelBitmap;
+      wxString          m_temp_outfile;
+      wxString          m_final_outfile;
 };
 
 class VDRControl : public wxWindow
