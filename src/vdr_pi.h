@@ -31,9 +31,9 @@
 
 #include "wx/wxprec.h"
 
-#ifndef  WX_PRECOMP
-  #include "wx/wx.h"
-#endif //precompiled headers
+#ifndef WX_PRECOMP
+#include "wx/wx.h"
+#endif  // precompiled headers
 
 #include <wx/fileconf.h>
 #include <wx/filepicker.h>
@@ -42,7 +42,7 @@
 #include "ocpn_plugin.h"
 #include "config.h"
 
-#define VDR_TOOL_POSITION -1          // Request default positioning of toolbar tool
+#define VDR_TOOL_POSITION -1  // Request default positioning of toolbar tool
 
 //----------------------------------------------------------------------------------------------------------
 //    The PlugIn Class Definition
@@ -50,68 +50,67 @@
 
 class VDRControl;
 
-class vdr_pi : public opencpn_plugin_117, wxTimer
-{
+class vdr_pi : public opencpn_plugin_117, wxTimer {
 public:
-      vdr_pi( void *ppimgr );
+  vdr_pi(void *ppimgr);
 
-//    The required PlugIn Methods
-      int Init( void );
-      bool DeInit( void );
+  //    The required PlugIn Methods
+  int Init(void);
+  bool DeInit(void);
 
-      int GetAPIVersionMajor();
-      int GetAPIVersionMinor();
-      int GetPlugInVersionMajor();
-      int GetPlugInVersionMinor();
-      wxBitmap *GetPlugInBitmap();
-      wxString GetCommonName();
-      wxString GetShortDescription();
-      wxString GetLongDescription();
+  int GetAPIVersionMajor();
+  int GetAPIVersionMinor();
+  int GetPlugInVersionMajor();
+  int GetPlugInVersionMinor();
+  wxBitmap *GetPlugInBitmap();
+  wxString GetCommonName();
+  wxString GetShortDescription();
+  wxString GetLongDescription();
 
-      void Notify();
-      void SetInterval( int interval );
+  void Notify();
+  void SetInterval(int interval);
 
-//    The optional method overrides
-      void SetNMEASentence( wxString &sentence );
-      void SetAISSentence( wxString &sentence );
-      int GetToolbarToolCount( void );
-      void OnToolbarToolCallback( int id );
-      void SetColorScheme( PI_ColorScheme cs );
+  //    The optional method overrides
+  void SetNMEASentence(wxString &sentence);
+  void SetAISSentence(wxString &sentence);
+  int GetToolbarToolCount(void);
+  void OnToolbarToolCallback(int id);
+  void SetColorScheme(PI_ColorScheme cs);
 
 private:
-      bool LoadConfig( void );
-      bool SaveConfig( void );
+  bool LoadConfig(void);
+  bool SaveConfig(void);
 
-      int               m_tb_item_id_record;
-      int               m_tb_item_id_play;
+  int m_tb_item_id_record;
+  int m_tb_item_id_play;
 
-      wxFileConfig     *m_pconfig;
-      wxAuiManager     *m_pauimgr;
-      VDRControl       *m_pvdrcontrol;
-      wxString          m_ifilename;
-      wxString          m_ofilename;
-      int               m_interval;
-      bool              m_recording;
-      wxTextFile        m_istream;
-      wxFile            m_ostream;
-      wxBitmap          m_panelBitmap;
-      wxString          m_temp_outfile;
-      wxString          m_final_outfile;
+  wxFileConfig *m_pconfig;
+  wxAuiManager *m_pauimgr;
+  VDRControl *m_pvdrcontrol;
+  wxString m_ifilename;
+  wxString m_ofilename;
+  int m_interval;
+  bool m_recording;
+  wxTextFile m_istream;
+  wxFile m_ostream;
+  wxBitmap m_panelBitmap;
+  wxString m_temp_outfile;
+  wxString m_final_outfile;
 };
 
-class VDRControl : public wxWindow
-{
+class VDRControl : public wxWindow {
 public:
-      VDRControl( wxWindow *pparent, wxWindowID id, vdr_pi *vdr, int speed, int range );
-      void SetColorScheme( PI_ColorScheme cs );
-      void SetProgress( int progress );
+  VDRControl(wxWindow *pparent, wxWindowID id, vdr_pi *vdr, int speed,
+             int range);
+  void SetColorScheme(PI_ColorScheme cs);
+  void SetProgress(int progress);
 
 private:
-      void OnSliderUpdated( wxCommandEvent& event );
+  void OnSliderUpdated(wxCommandEvent &event);
 
-      vdr_pi           *m_pvdr;
-      wxSlider         *m_pslider;
-      wxGauge          *m_pgauge;
+  vdr_pi *m_pvdr;
+  wxSlider *m_pslider;
+  wxGauge *m_pgauge;
 };
 
 #endif
