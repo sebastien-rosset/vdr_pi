@@ -26,12 +26,11 @@
  ***************************************************************************
  */
 
-
 #include "wx/wxprec.h"
 
-#ifndef  WX_PRECOMP
-  #include "wx/wx.h"
-#endif //precompiled headers
+#ifndef WX_PRECOMP
+#include "wx/wx.h"
+#endif  // precompiled headers
 
 #include <typeinfo>
 #include "vdr_pi.h"
@@ -39,18 +38,11 @@
 
 // the class factories, used to create and destroy instances of the PlugIn
 
-extern "C" DECL_EXP opencpn_plugin* create_pi(void *ppimgr)
-{
-    return new vdr_pi(ppimgr);
+extern "C" DECL_EXP opencpn_plugin *create_pi(void *ppimgr) {
+  return new vdr_pi(ppimgr);
 }
 
-extern "C" DECL_EXP void destroy_pi(opencpn_plugin* p)
-{
-    delete p;
-}
-
-
-
+extern "C" DECL_EXP void destroy_pi(opencpn_plugin *p) { delete p; }
 
 //---------------------------------------------------------------------------------------------------------
 //
@@ -58,361 +50,302 @@ extern "C" DECL_EXP void destroy_pi(opencpn_plugin* p)
 //
 //---------------------------------------------------------------------------------------------------------
 
-vdr_pi::vdr_pi(void *ppimgr)
-      :opencpn_plugin_117(ppimgr), wxTimer(this)
-{
-      // Create the PlugIn icons
-      initialize_images();
+vdr_pi::vdr_pi(void *ppimgr) : opencpn_plugin_117(ppimgr), wxTimer(this) {
+  // Create the PlugIn icons
+  initialize_images();
 
-	  wxFileName fn;
+  wxFileName fn;
 
-    auto path = GetPluginDataDir("vdr_pi");
-    fn.SetPath(path);
-    fn.AppendDir("data");
-    fn.SetFullName("vdr_panel_icon.png");
+  auto path = GetPluginDataDir("vdr_pi");
+  fn.SetPath(path);
+  fn.AppendDir("data");
+  fn.SetFullName("vdr_panel_icon.png");
 
-    path = fn.GetFullPath();
+  path = fn.GetFullPath();
 
+  wxInitAllImageHandlers();
+
+  wxLogDebug(wxString("Using icon path: ") + path);
+  if (!wxImage::CanRead(path)) {
+    wxLogDebug("Initiating image handlers.");
     wxInitAllImageHandlers();
-
-    wxLogDebug(wxString("Using icon path: ") + path);
-    if (!wxImage::CanRead(path)) {
-        wxLogDebug("Initiating image handlers.");
-        wxInitAllImageHandlers();
-    }
-    wxImage panelIcon(path);
-    if (panelIcon.IsOk())
-        m_panelBitmap = wxBitmap(panelIcon);
-    else
-        wxLogWarning("VDR panel icon has NOT been loaded");
-
+  }
+  wxImage panelIcon(path);
+  if (panelIcon.IsOk())
+    m_panelBitmap = wxBitmap(panelIcon);
+  else
+    wxLogWarning("VDR panel icon has NOT been loaded");
 }
 
-int vdr_pi::Init(void)
-{
-      AddLocaleCatalog( _T("opencpn-vdr_pi") );
+int vdr_pi::Init(void) {
+  AddLocaleCatalog(_T("opencpn-vdr_pi"));
 
-      //    Get a pointer to the opencpn configuration object
-      m_pconfig = GetOCPNConfigObject();
-      m_pauimgr = GetFrameAuiManager();
-      m_pvdrcontrol = NULL;
+  //    Get a pointer to the opencpn configuration object
+  m_pconfig = GetOCPNConfigObject();
+  m_pauimgr = GetFrameAuiManager();
+  m_pvdrcontrol = NULL;
 
-      //    And load the configuration items
-      LoadConfig();
+  //    And load the configuration items
+  LoadConfig();
 
 #ifdef VDR_USE_SVG
-        m_tb_item_id_record = InsertPlugInToolSVG(_T( "VDR" ),
-            _svg_vdr_record, _svg_record_toggled, _svg_record_toggled,
-            wxITEM_CHECK, _("VDR Record"), _T( "" ), NULL,
-            VDR_TOOL_POSITION, 0, this);
-		m_tb_item_id_play = InsertPlugInToolSVG(_T( "VDR" ),
-            _svg_vdr_play, _svg_play_toggled, _svg_play_toggled,
-            wxITEM_CHECK, _("VDR Play"), _T( "" ), NULL,
-            VDR_TOOL_POSITION, 0, this);
-		 m_recording = false;
+  m_tb_item_id_record =
+      InsertPlugInToolSVG(_T( "VDR" ), _svg_vdr_record, _svg_record_toggled,
+                          _svg_record_toggled, wxITEM_CHECK, _("VDR Record"),
+                          _T( "" ), NULL, VDR_TOOL_POSITION, 0, this);
+  m_tb_item_id_play = InsertPlugInToolSVG(
+      _T( "VDR" ), _svg_vdr_play, _svg_play_toggled, _svg_play_toggled,
+      wxITEM_CHECK, _("VDR Play"), _T( "" ), NULL, VDR_TOOL_POSITION, 0, this);
+  m_recording = false;
 #else
-      m_tb_item_id_record = InsertPlugInTool(_T(""), _img_vdr_record, _img_vdr_record, wxITEM_CHECK,
-            _("VDR Record"), _T(""), NULL, VDR_TOOL_POSITION, 0, this);
-      m_tb_item_id_play = InsertPlugInTool(_T(""), _img_vdr_play, _img_vdr_play, wxITEM_CHECK,
-            _("VDR Play"), _T(""), NULL, VDR_TOOL_POSITION, 0, this);
-      m_recording = false;
+  m_tb_item_id_record = InsertPlugInTool(
+      _T(""), _img_vdr_record, _img_vdr_record, wxITEM_CHECK, _("VDR Record"),
+      _T(""), NULL, VDR_TOOL_POSITION, 0, this);
+  m_tb_item_id_play =
+      InsertPlugInTool(_T(""), _img_vdr_play, _img_vdr_play, wxITEM_CHECK,
+                       _("VDR Play"), _T(""), NULL, VDR_TOOL_POSITION, 0, this);
+  m_recording = false;
 #endif
 
-      return (
-           WANTS_TOOLBAR_CALLBACK    |
-           INSTALLS_TOOLBAR_TOOL     |
-           WANTS_CONFIG              |
-           WANTS_NMEA_SENTENCES      |
-           WANTS_AIS_SENTENCES
-            );
+  return (WANTS_TOOLBAR_CALLBACK | INSTALLS_TOOLBAR_TOOL | WANTS_CONFIG |
+          WANTS_NMEA_SENTENCES | WANTS_AIS_SENTENCES);
 }
 
-bool vdr_pi::DeInit(void)
-{
-      SaveConfig();
-      if ( IsRunning() ) // Timer started?
-      {
-            Stop(); // Stop timer
-            m_istream.Close();
-      }
+bool vdr_pi::DeInit(void) {
+  SaveConfig();
+  if (IsRunning())  // Timer started?
+  {
+    Stop();  // Stop timer
+    m_istream.Close();
+  }
 
-      if ( m_pvdrcontrol )
-      {
-            m_pauimgr->DetachPane( m_pvdrcontrol );
-            m_pvdrcontrol->Close();
-            m_pvdrcontrol->Destroy();
-            m_pvdrcontrol = NULL;
-      }
+  if (m_pvdrcontrol) {
+    m_pauimgr->DetachPane(m_pvdrcontrol);
+    m_pvdrcontrol->Close();
+    m_pvdrcontrol->Destroy();
+    m_pvdrcontrol = NULL;
+  }
 
-      if ( m_recording )
-      {
-            m_ostream.Close();
-            m_recording = false;
-      }
+  if (m_recording) {
+    m_ostream.Close();
+    m_recording = false;
+  }
 
-      RemovePlugInTool( m_tb_item_id_record );
-      RemovePlugInTool( m_tb_item_id_play );
-      return true;
+  RemovePlugInTool(m_tb_item_id_record);
+  RemovePlugInTool(m_tb_item_id_play);
+  return true;
 }
 
-int vdr_pi::GetAPIVersionMajor()
-{
-      return atoi(API_VERSION);
+int vdr_pi::GetAPIVersionMajor() { return atoi(API_VERSION); }
+
+int vdr_pi::GetAPIVersionMinor() {
+  std::string v(API_VERSION);
+  size_t dotpos = v.find('.');
+  return atoi(v.substr(dotpos + 1).c_str());
 }
 
-int vdr_pi::GetAPIVersionMinor()
-{
-    std::string v(API_VERSION);
-    size_t dotpos = v.find('.');
-    return atoi(v.substr(dotpos + 1).c_str());
+int vdr_pi::GetPlugInVersionMajor() { return PLUGIN_VERSION_MAJOR; }
+
+int vdr_pi::GetPlugInVersionMinor() { return PLUGIN_VERSION_MINOR; }
+
+int GetPlugInVersionPatch() { return PLUGIN_VERSION_PATCH; }
+
+int GetPlugInVersionPost() { return PLUGIN_VERSION_TWEAK; }
+
+const char *GetPlugInVersionPre() { return PKG_PRERELEASE; }
+
+const char *GetPlugInVersionBuild() { return PKG_BUILD_INFO; }
+
+wxBitmap *vdr_pi::GetPlugInBitmap() { return &m_panelBitmap; }
+
+wxString vdr_pi::GetCommonName() { return _("VDR"); }
+
+wxString vdr_pi::GetShortDescription() {
+  return _("Voyage Data Recorder plugin for OpenCPN");
 }
 
-int vdr_pi::GetPlugInVersionMajor()
-{
-     return PLUGIN_VERSION_MAJOR;
-}
-
-int vdr_pi::GetPlugInVersionMinor()
-{
-      return PLUGIN_VERSION_MINOR;
-}
-
-int GetPlugInVersionPatch()
-{ 
-      return PLUGIN_VERSION_PATCH; 
-}
-
-int GetPlugInVersionPost() 
-{ 
-      return PLUGIN_VERSION_TWEAK; 
-}
-
-const char *GetPlugInVersionPre() 
-{
-      return PKG_PRERELEASE; 
-}
-
-const char *GetPlugInVersionBuild()
-{
-       return PKG_BUILD_INFO; 
-}
-
-wxBitmap *vdr_pi::GetPlugInBitmap()
-{
-       return &m_panelBitmap;
-}
-
-wxString vdr_pi::GetCommonName()
-{
-      return _("VDR");
-}
-
-wxString vdr_pi::GetShortDescription()
-{
-      return _("Voyage Data Recorder plugin for OpenCPN");
-}
-
-wxString vdr_pi::GetLongDescription()
-{
-      return _("Voyage Data Recorder plugin for OpenCPN\n\
+wxString vdr_pi::GetLongDescription() {
+  return _(
+      "Voyage Data Recorder plugin for OpenCPN\n\
 Provides NMEA stream save and replay.");
-
 }
 
-void vdr_pi::SetNMEASentence(wxString &sentence)
-{
-      if (m_recording)
-            m_ostream.Write(sentence);
+void vdr_pi::SetNMEASentence(wxString &sentence) {
+  if (m_recording) m_ostream.Write(sentence);
 }
 
-void vdr_pi::SetAISSentence(wxString &sentence)
-{
-      if (m_recording)
-            m_ostream.Write(sentence);
+void vdr_pi::SetAISSentence(wxString &sentence) {
+  if (m_recording) m_ostream.Write(sentence);
 }
 
-void vdr_pi::Notify()
-{
-      wxString str;
-      int pos = m_istream.GetCurrentLine();
+void vdr_pi::Notify() {
+  wxString str;
+  int pos = m_istream.GetCurrentLine();
 
-      if (m_istream.Eof() || pos==-1)
-            str = m_istream.GetFirstLine();
-      else
-            str = m_istream.GetNextLine();
+  if (m_istream.Eof() || pos == -1)
+    str = m_istream.GetFirstLine();
+  else
+    str = m_istream.GetNextLine();
 
-      PushNMEABuffer(str+_T("\r\n"));
+  PushNMEABuffer(str + _T("\r\n"));
 
-      if ( m_pvdrcontrol )
-            m_pvdrcontrol->SetProgress(pos);
+  if (m_pvdrcontrol) m_pvdrcontrol->SetProgress(pos);
 }
 
-void vdr_pi::SetInterval( int interval )
-{
-      m_interval = interval;
-      if ( IsRunning() ) // Timer started?
-            Start( m_interval, wxTIMER_CONTINUOUS ); // restart timer with new interval
+void vdr_pi::SetInterval(int interval) {
+  m_interval = interval;
+  if (IsRunning())                          // Timer started?
+    Start(m_interval, wxTIMER_CONTINUOUS);  // restart timer with new interval
 }
 
-int vdr_pi::GetToolbarToolCount(void)
-{
-      return 2;
-}
+int vdr_pi::GetToolbarToolCount(void) { return 2; }
 
-void vdr_pi::OnToolbarToolCallback(int id)
-{
-      if ( id == m_tb_item_id_play )
-      {
-            if ( IsRunning() ) // Timer started?
-            {
-                  Stop(); // Stop timer
-                  m_istream.Close();
+void vdr_pi::OnToolbarToolCallback(int id) {
+  if (id == m_tb_item_id_play) {
+    if (IsRunning())  // Timer started?
+    {
+      Stop();  // Stop timer
+      m_istream.Close();
 
-                  if ( m_pvdrcontrol )
-                  {
-                        m_pauimgr->DetachPane( m_pvdrcontrol );
-                        m_pvdrcontrol->Close();
-                        m_pvdrcontrol->Destroy();
-                        m_pvdrcontrol = NULL;
-                  }
-                  SetToolbarItemState( id, false );
-            }
-            else
-            {
-                  wxString idir;
-                  if(m_ifilename.Length()){
-                    wxFileName fn(m_ifilename);
-                    idir = fn.GetPath();
-                  }
-
-                  wxString file;
-                  int response = PlatformFileSelectorDialog( GetOCPNCanvasWindow(), &file, _("Choose a file to Play"), idir, "", _T("*.*") );
-
-                  if( response != wxID_OK )
-                  {
-                        SetToolbarItemState( id, false );
-                        return;
-                  }
-                  m_ifilename.Clear();
-                  m_ifilename = file;
-
-                  m_istream.Open( m_ifilename );
-                  Start( m_interval, wxTIMER_CONTINUOUS ); // start timer
-
-                  if (! m_pvdrcontrol )
-                  {
-                        m_pvdrcontrol = new VDRControl( GetOCPNCanvasWindow(), wxID_ANY, this, 1000/m_interval, m_istream.GetLineCount() );
-                        wxAuiPaneInfo pane = wxAuiPaneInfo().Name(_T("VDR")).Caption(wxString::Format(_("VDR replay: %s"),m_ifilename))
-                        .CaptionVisible(true).Float().FloatingPosition(100,100).Dockable(false).Fixed().CloseButton(false).Show(true);
-                        m_pauimgr->AddPane( m_pvdrcontrol, pane );
-                        m_pauimgr->Update();
-                  }
-
-                  SetToolbarItemState( id, true );
-            }
+      if (m_pvdrcontrol) {
+        m_pauimgr->DetachPane(m_pvdrcontrol);
+        m_pvdrcontrol->Close();
+        m_pvdrcontrol->Destroy();
+        m_pvdrcontrol = NULL;
       }
-      else if ( id == m_tb_item_id_record )
-      {
-            if ( m_recording )
-            {
-                  m_ostream.Close();
-                  m_recording = false;
+      SetToolbarItemState(id, false);
+    } else {
+      wxString idir;
+      if (m_ifilename.Length()) {
+        wxFileName fn(m_ifilename);
+        idir = fn.GetPath();
+      }
 
-                  SetToolbarItemState( id, false );
+      wxString file;
+      int response = PlatformFileSelectorDialog(GetOCPNCanvasWindow(), &file,
+                                                _("Choose a file to Play"),
+                                                idir, "", _T("*.*"));
+
+      if (response != wxID_OK) {
+        SetToolbarItemState(id, false);
+        return;
+      }
+      m_ifilename.Clear();
+      m_ifilename = file;
+
+      m_istream.Open(m_ifilename);
+      Start(m_interval, wxTIMER_CONTINUOUS);  // start timer
+
+      if (!m_pvdrcontrol) {
+        m_pvdrcontrol =
+            new VDRControl(GetOCPNCanvasWindow(), wxID_ANY, this,
+                           1000 / m_interval, m_istream.GetLineCount());
+        wxAuiPaneInfo pane =
+            wxAuiPaneInfo()
+                .Name(_T("VDR"))
+                .Caption(wxString::Format(_("VDR replay: %s"), m_ifilename))
+                .CaptionVisible(true)
+                .Float()
+                .FloatingPosition(100, 100)
+                .Dockable(false)
+                .Fixed()
+                .CloseButton(false)
+                .Show(true);
+        m_pauimgr->AddPane(m_pvdrcontrol, pane);
+        m_pauimgr->Update();
+      }
+
+      SetToolbarItemState(id, true);
+    }
+  } else if (id == m_tb_item_id_record) {
+    if (m_recording) {
+      m_ostream.Close();
+      m_recording = false;
+
+      SetToolbarItemState(id, false);
 #ifdef __ANDROID__
-                  bool AndroidSecureCopyFile(wxString in, wxString out);
-                  AndroidSecureCopyFile(m_temp_outfile, m_final_outfile);
-                  ::wxRemoveFile(m_temp_outfile);
+      bool AndroidSecureCopyFile(wxString in, wxString out);
+      AndroidSecureCopyFile(m_temp_outfile, m_final_outfile);
+      ::wxRemoveFile(m_temp_outfile);
 #endif
-            }
-            else
-            {
-                  wxString idir, ifile;
-                  if(m_ofilename.Length()){
-                    wxFileName fn(m_ifilename);
-                    idir = fn.GetPath();
-                    ifile = fn.GetFullName();
-                  }
-                  else{
-                    ifile = wxString(_T("vdr.txt"));
-                    idir = *GetpPrivateApplicationDataLocation();
-                  }
+    } else {
+      wxString idir, ifile;
+      if (m_ofilename.Length()) {
+        wxFileName fn(m_ifilename);
+        idir = fn.GetPath();
+        ifile = fn.GetFullName();
+      } else {
+        ifile = wxString(_T("vdr.txt"));
+        idir = *GetpPrivateApplicationDataLocation();
+      }
 
 #ifdef __ANDROID__
-                  wxString file_uniq = wxString("vdr-");
-                  wxDateTime now = wxDateTime::Now();
-                  wxString uniq = now.FormatISOCombined();
-                  ifile = file_uniq + uniq + ".txt";
-                  idir = "/storage/emulated/0/Android/Documents";
+      wxString file_uniq = wxString("vdr-");
+      wxDateTime now = wxDateTime::Now();
+      wxString uniq = now.FormatISOCombined();
+      ifile = file_uniq + uniq + ".txt";
+      idir = "/storage/emulated/0/Android/Documents";
 
-                  m_temp_outfile = *GetpPrivateApplicationDataLocation();
-                  m_temp_outfile += wxString("/vdr_temp.txt");
+      m_temp_outfile = *GetpPrivateApplicationDataLocation();
+      m_temp_outfile += wxString("/vdr_temp.txt");
 #endif
-                  wxString file;
-                  int response = PlatformFileSelectorDialog( GetOCPNCanvasWindow(),
-                                                            &file, _("Create a file to Record"), idir, ifile, _T("*.*") );
+      wxString file;
+      int response = PlatformFileSelectorDialog(GetOCPNCanvasWindow(), &file,
+                                                _("Create a file to Record"),
+                                                idir, ifile, _T("*.*"));
 
-                  if( response != wxID_OK )
-                  {
-                        SetToolbarItemState( id, false );
-                        return;
-                  }
-                  m_ofilename.Clear();
-                  m_ofilename = file;
-#ifdef  __ANDROID__
-                  m_final_outfile = file;
-                  m_ofilename = m_temp_outfile;
+      if (response != wxID_OK) {
+        SetToolbarItemState(id, false);
+        return;
+      }
+      m_ofilename.Clear();
+      m_ofilename = file;
+#ifdef __ANDROID__
+      m_final_outfile = file;
+      m_ofilename = m_temp_outfile;
 #endif
-                  m_ostream.Open( m_ofilename, wxFile::write );
-                  m_recording = true;
+      m_ostream.Open(m_ofilename, wxFile::write);
+      m_recording = true;
 
-                  SetToolbarItemState( id, true );
-            }
-      }
+      SetToolbarItemState(id, true);
+    }
+  }
 }
 
-void vdr_pi::SetColorScheme(PI_ColorScheme cs)
-{
-      if ( m_pvdrcontrol )
-      {
-            m_pvdrcontrol->SetColorScheme( cs );
-      }
+void vdr_pi::SetColorScheme(PI_ColorScheme cs) {
+  if (m_pvdrcontrol) {
+    m_pvdrcontrol->SetColorScheme(cs);
+  }
 }
 
-bool vdr_pi::LoadConfig(void)
-{
-      wxFileConfig *pConf = (wxFileConfig *)m_pconfig;
+bool vdr_pi::LoadConfig(void) {
+  wxFileConfig *pConf = (wxFileConfig *)m_pconfig;
 
-      if(pConf)
-      {
-            pConf->SetPath( _T("/PlugIns/VDR") );
+  if (pConf) {
+    pConf->SetPath(_T("/PlugIns/VDR"));
 
-            pConf->Read( _T("InputFilename"), &m_ifilename, wxEmptyString );
-            pConf->Read( _T("OutputFilename"), &m_ofilename, wxEmptyString );
-            pConf->Read( _T("Interval"), &m_interval, 1 );
+    pConf->Read(_T("InputFilename"), &m_ifilename, wxEmptyString);
+    pConf->Read(_T("OutputFilename"), &m_ofilename, wxEmptyString);
+    pConf->Read(_T("Interval"), &m_interval, 1);
 
-            return true;
-      }
-      else
-            return false;
+    return true;
+  } else
+    return false;
 }
 
-bool vdr_pi::SaveConfig(void)
-{
-      wxFileConfig *pConf = (wxFileConfig *)m_pconfig;
+bool vdr_pi::SaveConfig(void) {
+  wxFileConfig *pConf = (wxFileConfig *)m_pconfig;
 
-      if(pConf)
-      {
-            pConf->SetPath( _T("/PlugIns/VDR") );
+  if (pConf) {
+    pConf->SetPath(_T("/PlugIns/VDR"));
 
-            pConf->Write( _T("InputFilename"), m_ifilename );
-            pConf->Write( _T("OutputFilename"), m_ofilename );
-            pConf->Write( _T("Interval"), m_interval );
+    pConf->Write(_T("InputFilename"), m_ifilename);
+    pConf->Write(_T("OutputFilename"), m_ofilename);
+    pConf->Write(_T("Interval"), m_interval);
 
-            return true;
-      }
-      else
-            return false;
+    return true;
+  } else
+    return false;
 }
 
 //----------------------------------------------------------------
@@ -421,49 +354,52 @@ bool vdr_pi::SaveConfig(void)
 //
 //----------------------------------------------------------------
 
-VDRControl::VDRControl( wxWindow *pparent, wxWindowID id, vdr_pi *vdr, int speed, int range )
-      :wxWindow( pparent, id, wxDefaultPosition, wxDefaultSize, wxBORDER_NONE, _T("Dashboard") ), m_pvdr(vdr)
-{
-      wxColour cl;
-      GetGlobalColor(_T("DILG1"), &cl);
-      SetBackgroundColour(cl);
+VDRControl::VDRControl(wxWindow *pparent, wxWindowID id, vdr_pi *vdr, int speed,
+                       int range)
+    : wxWindow(pparent, id, wxDefaultPosition, wxDefaultSize, wxBORDER_NONE,
+               _T("Dashboard")),
+      m_pvdr(vdr) {
+  wxColour cl;
+  GetGlobalColor(_T("DILG1"), &cl);
+  SetBackgroundColour(cl);
 
-      wxFlexGridSizer *topsizer = new wxFlexGridSizer(2);
-      topsizer->AddGrowableCol(1);
+  wxFlexGridSizer *topsizer = new wxFlexGridSizer(2);
+  topsizer->AddGrowableCol(1);
 
-      wxStaticText *itemStaticText01 = new wxStaticText( this, wxID_ANY, _("Speed:") );
-      topsizer->Add( itemStaticText01, 0, wxEXPAND|wxALL, 2 );
+  wxStaticText *itemStaticText01 =
+      new wxStaticText(this, wxID_ANY, _("Speed:"));
+  topsizer->Add(itemStaticText01, 0, wxEXPAND | wxALL, 2);
 
-      m_pslider = new wxSlider( this, wxID_ANY, speed, 1, 100, wxDefaultPosition, wxSize( 200, 20) );
-      topsizer->Add( m_pslider, 1, wxALL|wxEXPAND, 2 );
-      m_pslider->Connect( wxEVT_COMMAND_SLIDER_UPDATED, wxCommandEventHandler(VDRControl::OnSliderUpdated), NULL, this);
+  m_pslider = new wxSlider(this, wxID_ANY, speed, 1, 100, wxDefaultPosition,
+                           wxSize(200, 20));
+  topsizer->Add(m_pslider, 1, wxALL | wxEXPAND, 2);
+  m_pslider->Connect(wxEVT_COMMAND_SLIDER_UPDATED,
+                     wxCommandEventHandler(VDRControl::OnSliderUpdated), NULL,
+                     this);
 
-      wxStaticText *itemStaticText02 = new wxStaticText( this, wxID_ANY, _("Progress:") );
-      topsizer->Add( itemStaticText02, 0, wxEXPAND|wxALL, 2 );
+  wxStaticText *itemStaticText02 =
+      new wxStaticText(this, wxID_ANY, _("Progress:"));
+  topsizer->Add(itemStaticText02, 0, wxEXPAND | wxALL, 2);
 
-      m_pgauge = new wxGauge( this, wxID_ANY, range, wxDefaultPosition, wxDefaultSize, wxGA_HORIZONTAL );
-      topsizer->Add( m_pgauge, 1, wxALL|wxEXPAND, 2 );
+  m_pgauge = new wxGauge(this, wxID_ANY, range, wxDefaultPosition,
+                         wxDefaultSize, wxGA_HORIZONTAL);
+  topsizer->Add(m_pgauge, 1, wxALL | wxEXPAND, 2);
 
-      SetSizer( topsizer );
-      topsizer->Fit( this );
-      Layout();
+  SetSizer(topsizer);
+  topsizer->Fit(this);
+  Layout();
 }
 
-void VDRControl::SetColorScheme( PI_ColorScheme cs )
-{
-      wxColour cl;
-      GetGlobalColor( _T("DILG1"), &cl );
-      SetBackgroundColour( cl );
+void VDRControl::SetColorScheme(PI_ColorScheme cs) {
+  wxColour cl;
+  GetGlobalColor(_T("DILG1"), &cl);
+  SetBackgroundColour(cl);
 
-      Refresh(false);
+  Refresh(false);
 }
 
-void VDRControl::SetProgress( int progress )
-{
-      m_pgauge->SetValue( progress );
-}
+void VDRControl::SetProgress(int progress) { m_pgauge->SetValue(progress); }
 
-void VDRControl::OnSliderUpdated( wxCommandEvent& event )
-{
-      m_pvdr->SetInterval( 1000/m_pslider->GetValue() );
+void VDRControl::OnSliderUpdated(wxCommandEvent &event) {
+  m_pvdr->SetInterval(1000 / m_pslider->GetValue());
 }
