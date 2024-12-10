@@ -140,6 +140,7 @@ private:
   bool ParseCSVHeader(const wxString& header);
   wxString ParseCSVLine(const wxString& line, wxDateTime* timestamp);
   bool IsNMEAOrAIS(const wxString& line);
+  bool ParseNMEATimestamp(const wxString& nmea, wxDateTime* timestamp);
 
   int m_tb_item_id_record;
   int m_tb_item_id_play;
