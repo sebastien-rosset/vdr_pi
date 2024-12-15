@@ -29,6 +29,9 @@ enum {
   ID_VDR_LOG_ROTATE_CHECK,       // ID for log rotation checkbox
   ID_VDR_AUTO_RECORD_CHECK,      // ID for auto recording checkbox
   ID_USE_SPEED_THRESHOLD_CHECK,  // ID for speed threshold checkbox
+  ID_NMEA0183_CHECK,
+  ID_NMEA2000_CHECK,
+  ID_SIGNALK_CHECK
 };
 
 BEGIN_EVENT_TABLE(VDRPrefsDialog, wxDialog)
@@ -45,7 +48,8 @@ VDRPrefsDialog::VDRPrefsDialog(wxWindow* parent, wxWindowID id,
                                const wxString& recordingDir, bool logRotate,
                                int logRotateInterval, bool autoStartRecording,
                                bool useSpeedThreshold, double speedThreshold,
-                               int stopDelay)
+                               int stopDelay,
+                               const VDRProtocolSettings& protocols)
     : wxDialog(parent, id, _("VDR Preferences"), wxDefaultPosition,
                wxDefaultSize, wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER),
       m_format(format),
@@ -55,7 +59,8 @@ VDRPrefsDialog::VDRPrefsDialog(wxWindow* parent, wxWindowID id,
       m_auto_start_recording(autoStartRecording),
       m_use_speed_threshold(useSpeedThreshold),
       m_speed_threshold(speedThreshold),
-      m_stop_delay(stopDelay) {
+      m_stop_delay(stopDelay),
+      m_protocols(protocols) {
   CreateControls();
   GetSizer()->Fit(this);
   GetSizer()->SetSizeHints(this);
@@ -80,6 +85,28 @@ void VDRPrefsDialog::UpdateControlStates() {
 void VDRPrefsDialog::CreateControls() {
   wxBoxSizer* mainSizer = new wxBoxSizer(wxVERTICAL);
   SetSizer(mainSizer);
+
+  // Protocol selection section
+  wxStaticBox* protocolBox =
+      new wxStaticBox(this, wxID_ANY, _("Recording Protocols"));
+  wxStaticBoxSizer* protocolSizer =
+      new wxStaticBoxSizer(protocolBox, wxVERTICAL);
+
+  m_nmea0183Check = new wxCheckBox(this, ID_NMEA0183_CHECK, _("NMEA 0183"));
+  m_nmea0183Check->SetValue(m_protocols.nmea0183);
+  protocolSizer->Add(m_nmea0183Check, 0, wxALL, 5);
+
+  m_nmea2000Check = new wxCheckBox(this, ID_NMEA2000_CHECK, _("NMEA 2000"));
+  m_nmea2000Check->SetValue(m_protocols.nmea2000);
+  protocolSizer->Add(m_nmea2000Check, 0, wxALL, 5);
+
+#if 0
+  m_signalKCheck = new wxCheckBox(this, ID_SIGNALK_CHECK, _("Signal K"));
+  m_signalKCheck->SetValue(m_protocols.signalK);
+  protocolSizer->Add(m_signalKCheck, 0, wxALL, 5);
+#endif
+
+  mainSizer->Add(protocolSizer, 0, wxEXPAND | wxALL, 5);
 
   // Add format choice
   wxStaticBox* formatBox =
@@ -206,6 +233,12 @@ void VDRPrefsDialog::OnOK(wxCommandEvent& event) {
   m_use_speed_threshold = m_useSpeedThresholdCheck->GetValue();
   m_speed_threshold = m_speedThresholdCtrl->GetValue();
   m_stop_delay = m_stopDelayCtrl->GetValue();
+
+  m_protocols.nmea0183 = m_nmea0183Check->GetValue();
+  m_protocols.nmea2000 = m_nmea2000Check->GetValue();
+#if 0
+  m_protocols.signalK = m_signalKCheck->GetValue();
+#endif
   event.Skip();
 }
 

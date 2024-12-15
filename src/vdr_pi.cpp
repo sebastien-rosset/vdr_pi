@@ -35,7 +35,10 @@
 #include "wx/tokenzr.h"
 #include "wx/statline.h"
 
+#include <map>
 #include <typeinfo>
+
+#include "ocpn_plugin.h"
 #include "vdr_pi_prefs.h"
 #include "vdr_pi.h"
 #include "icons.h"
@@ -54,7 +57,10 @@ extern "C" DECL_EXP void destroy_pi(opencpn_plugin* p) { delete p; }
 //
 //---------------------------------------------------------------------------------------------------------
 
-vdr_pi::vdr_pi(void* ppimgr) : opencpn_plugin_117(ppimgr), wxTimer(this) {
+wxDEFINE_EVENT(EVT_N2K, ObservedEvt);
+wxDEFINE_EVENT(EVT_SIGNALK, ObservedEvt);
+
+vdr_pi::vdr_pi(void* ppimgr) : opencpn_plugin_118(ppimgr) {
   // Create the PlugIn icons
   initialize_images();
 
@@ -82,26 +88,16 @@ vdr_pi::vdr_pi(void* ppimgr) : opencpn_plugin_117(ppimgr), wxTimer(this) {
 
   m_pvdrcontrol = NULL;
 
-  // Initialize configuration parameters
-  m_interval = 1000;  // Default 1 second interval
-  m_log_rotate = false;
-  m_log_rotate_interval = 24;
-  m_auto_start_recording = false;
-  m_auto_recording_active = false;
-  m_speed_threshold = 0.5;  // Default 0.5 knots
-  m_stop_delay = 10;        // Default 10 minutes
-  m_data_format = VDRDataFormat::RawNMEA;
-
   // Runtime variables
   m_recording = false;
   m_is_csv_file = false;
-  m_timestamp_idx = -1;
-  m_message_idx = -1;
   m_last_speed = 0.0;
-  m_auto_recording_active = false;
 }
 
 int vdr_pi::Init(void) {
+  m_eventHandler = new wxEvtHandler();
+  m_timer = new TimerHandler(this);
+
   AddLocaleCatalog(_T("opencpn-vdr_pi"));
 
   // Get a pointer to the opencpn configuration object
@@ -111,13 +107,16 @@ int vdr_pi::Init(void) {
   // Load the configuration items
   LoadConfig();
 
+  // Set up NMEA 2000 listeners based on preferences
+  UpdateNMEA2000Listeners();
+
   // If auto-start is enabled and we're not playing back and not using speed
   // threshold, start recording after initialization.
+  m_recording_manually_disabled = false;
   if (m_auto_start_recording && !m_use_speed_threshold && !IsPlaying()) {
     wxLogMessage(_T("VDR: Auto-starting recording on plugin initialization"));
     StartRecording();
     SetToolbarToolStatus(m_tb_item_id_record, true);
-    m_auto_recording_active = true;
   }
 
 #ifdef VDR_USE_SVG
@@ -145,10 +144,13 @@ int vdr_pi::Init(void) {
 
 bool vdr_pi::DeInit(void) {
   SaveConfig();
-  if (IsRunning())  // Timer started?
-  {
-    Stop();  // Stop timer
-    m_istream.Close();
+  if (m_timer) {
+    if (m_timer->IsRunning()) {
+      m_timer->Stop();
+      m_istream.Close();
+    }
+    delete m_timer;
+    m_timer = nullptr;
   }
 
   if (m_pvdrcontrol) {
@@ -170,6 +172,15 @@ bool vdr_pi::DeInit(void) {
 
   RemovePlugInTool(m_tb_item_id_record);
   RemovePlugInTool(m_tb_item_id_play);
+
+  if (m_eventHandler) {
+    m_eventHandler->Unbind(EVT_N2K, &vdr_pi::OnN2KEvent, this);
+    m_eventHandler->Unbind(EVT_SIGNALK, &vdr_pi::OnSignalKEvent, this);
+    delete m_eventHandler;
+    m_eventHandler = nullptr;
+  }
+  m_n2k_listeners.clear();
+  m_signalk_listeners.clear();
   return true;
 }
 
@@ -207,6 +218,63 @@ wxString vdr_pi::GetLongDescription() {
 Provides NMEA stream save and replay.");
 }
 
+void vdr_pi::UpdateSignalKListeners() {
+  m_eventHandler->Unbind(EVT_SIGNALK, &vdr_pi::OnSignalKEvent, this);
+  m_signalk_listeners.clear();
+  wxLogMessage("Configuring SignalK listeners. SignalK enabled: %d",
+               m_protocols.signalK);
+  if (m_protocols.signalK) {
+    // TODO: Implement SignalK configuration.
+  }
+}
+
+void vdr_pi::UpdateNMEA2000Listeners() {
+  m_eventHandler->Unbind(EVT_N2K, &vdr_pi::OnN2KEvent, this);
+  m_n2k_listeners.clear();
+  wxLogMessage("Configuring NMEA 2000 listeners. NMEA 2000 enabled: %d",
+               m_protocols.nmea2000);
+  if (m_protocols.nmea2000) {
+    // The plugin API 1.19 is not available on Android.
+    // When it is available, the ifndef condition can be removed.
+    std::map<unsigned int, wxString> parameterGroupNumbers = {
+        {59392, "ISO Acknowledgement"},
+        {59904, "ISO Request"},
+        {60160, "ISO Transport Protocol, Data Transfer"},
+        {60416, "ISO Transport Protocol, Connection Management"},
+        {60928, "ISO Address Claim"},
+        {61184, "Manufacturer Proprietary Single Frame"},
+        {65280, "Manufacturer Proprietary Single Frame"},
+        {65305,
+         "Manufacturer Proprietary Single Frame (B&G AC12 Autopilot Status)"},
+        {65309,
+         "Manufacturer Proprietary Single Frame (B&G WS320 Battery Status)"},
+        {65312,
+         "Manufacturer Proprietary Single Frame (B&G WS320 Wireless Status)"},
+        {65340,
+         "Manufacturer Proprietary Single Frame (B&G AC12 Autopilot Mode)"},
+        {65341, "Manufacturer Proprietary Single Frame (B&G AC12 Wind Angle)"},
+        {127245, "Rudder Angle"},
+        {127250, "Vessel Heading"},
+        {127257, "Attitude (Roll and Pitch)"},
+        {128259, "Speed Through Water"},
+        {128267, "Water Depth"},
+        {128275, "Distance Log"},
+        {128777, "Windlass Status"},
+        {129029, "GNSS Position Data"},
+        {129540, "GNSS Satellites in View"},
+        {130306, "Wind Data"},
+        {130310, "Environmental Parameters"},
+        {130313, "Environmental Parameters"}};
+
+    for (const auto& it : parameterGroupNumbers) {
+      m_n2k_listeners.push_back(
+          GetListener(NMEA2000Id(it.first), EVT_N2K, m_eventHandler));
+    }
+
+    m_eventHandler->Bind(EVT_N2K, &vdr_pi::OnN2KEvent, this);
+  }
+}
+
 // Format timestamp: YYYY-MM-DDTHH:MM:SS.mmmZ
 // The format combines ISO format with milliseconds in UTC.
 wxString FormatIsoDateTime(const wxDateTime& ts) {
@@ -216,7 +284,85 @@ wxString FormatIsoDateTime(const wxDateTime& ts) {
   return timestamp;
 }
 
-wxString vdr_pi::FormatNMEAAsCSV(const wxString& nmea) {
+void vdr_pi::OnSignalKEvent(wxCommandEvent& event) {
+  if (!m_protocols.signalK) {
+    // SignalK recording is disabled.
+    return;
+  }
+  // TODO: Implement SignalK recording.
+}
+
+void vdr_pi::OnN2KEvent(wxCommandEvent& event) {
+  if (!m_protocols.nmea2000) {
+    // NMEA 2000 recording is disabled.
+    return;
+  }
+
+  ObservedEvt& ev = dynamic_cast<ObservedEvt&>(event);
+  // Get PGN from event
+  NMEA2000Id id(ev.GetId());
+
+  // Check for Speed Through Water PGN (128259)
+  if (id.id == 128259) {
+    // Get binary payload
+    std::vector<uint8_t> payload = GetN2000Payload(id, ev);
+
+    // Speed Through Water message format:
+    // Byte 0-1: SID and reserved
+    // Byte 2-5: Speed Through Water (float, knots)
+    if (payload.size() >= 6) {
+      // Extract speed value (float, 4 bytes, little-endian)
+      float speed;
+      memcpy(&speed, &payload[2], 4);
+
+      // Convert to double for consistency with NMEA 0183 handling
+      double speed_knots = static_cast<double>(speed);
+
+      // Update last known speed
+      m_last_speed = speed_knots;
+
+      // Check if we should start/stop recording based on speed
+      CheckAutoRecording(speed_knots);
+    }
+  }
+  if (!m_recording) {
+    return;
+  }
+
+  // Get binary payload and source
+  std::vector<uint8_t> payload = GetN2000Payload(id, ev);
+  std::string source = GetN2000Source(id, ev);
+
+  // Convert binary payload to hex string for logging
+  wxString hex_payload;
+  for (const auto& byte : payload) {
+    hex_payload += wxString::Format("%02X", byte);
+  }
+
+  // Format N2K message for recording.
+  wxString formatted_message;
+  switch (m_data_format) {
+    case VDRDataFormat::CSV: {
+      // CSV format: timestamp,type,source,pgn,payload
+      wxString timestamp = FormatIsoDateTime(wxDateTime::UNow());
+      formatted_message = wxString::Format("%s,NMEA2000,%s,%d,%s\n", timestamp,
+                                           source, id.id, hex_payload);
+      break;
+    }
+    case VDRDataFormat::RawNMEA:
+      // PCDIN format: $PCDIN,<pgn>,<source>,<payload>
+      formatted_message =
+          wxString::Format("$PCDIN,%d,%s,%s\r\n", id.id, source, hex_payload);
+      break;
+  }
+
+  // Check if we need to rotate the VDR file.
+  CheckLogRotation();
+
+  m_ostream.Write(formatted_message.ToStdString());
+}
+
+wxString vdr_pi::FormatNMEA0183AsCSV(const wxString& nmea) {
   // Get current time with millisecond precision
   wxString timestamp = FormatIsoDateTime(wxDateTime::UNow());
 
@@ -234,7 +380,11 @@ wxString vdr_pi::FormatNMEAAsCSV(const wxString& nmea) {
 }
 
 void vdr_pi::SetNMEASentence(wxString& sentence) {
-  // Check for RMC sentence to get speed
+  if (!m_protocols.nmea0183) {
+    // Recording of NMEA 0183 is disabled.
+    return;
+  }
+  // Check for RMC sentence to get speed and check for auto-recording.
   if (sentence.StartsWith("$GPRMC") || sentence.StartsWith("$GNRMC")) {
     wxStringTokenizer tkz(sentence, wxT(","));
     wxString token;
@@ -260,12 +410,12 @@ void vdr_pi::SetNMEASentence(wxString& sentence) {
   // Only record if recording is active (whether manual or automatic)
   if (!m_recording) return;
 
-  // Check if we need to rotate the VDR file
+  // Check if we need to rotate the VDR file.
   CheckLogRotation();
 
   switch (m_data_format) {
     case VDRDataFormat::CSV:
-      m_ostream.Write(FormatNMEAAsCSV(sentence));
+      m_ostream.Write(FormatNMEA0183AsCSV(sentence));
       break;
     case VDRDataFormat::RawNMEA:
     default:
@@ -278,43 +428,52 @@ void vdr_pi::SetAISSentence(wxString& sentence) {
   SetNMEASentence(sentence);  // Handle the same way as NMEA
 }
 
-/**
- * Check if auto-recording should be started or stopped based.
- *
- * Don't auto-record if:
- * 1. Auto-recording is disabled
- * 2. Manual recording is active (not auto-recording)
- * 3. Playback is active
- */
 void vdr_pi::CheckAutoRecording(double speed) {
-  if ((m_recording && !m_auto_recording_active) || IsPlaying()) {
+  if (!m_auto_start_recording) {
+    // If auto-recording is disabled in settings, do nothing.
     return;
   }
 
-  // If we're not using speed threshold, nothing to check.
+  if (IsPlaying()) {
+    // If playback is active, no recording allowed.
+    return;
+  }
+
   if (!m_use_speed_threshold) {
+    // If we're not using speed threshold, nothing to check.
+    return;
+  }
+
+  // If speed drops below threshold, clear the manual disable flag.
+  if (speed < m_speed_threshold) {
+    if (m_recording_manually_disabled) {
+      m_recording_manually_disabled = false;
+      wxLogMessage(_T("VDR: Re-enabling auto-recording capability"));
+    }
+  }
+
+  if (m_recording_manually_disabled) {
+    // Don't auto-record if manually disabled.
     return;
   }
 
   if (speed >= m_speed_threshold) {
-    // Reset the below-threshold timer when speed goes above threshold
+    // Reset the below-threshold timer when speed goes above threshold.
     m_below_threshold_since = wxDateTime();
 
-    if (!m_auto_recording_active) {
-      // Start recording
+    if (!m_recording) {
       wxLogMessage(
           _T("VDR: Auto-starting recording - speed %.2f exceeds threshold ")
           _T("%.2f"),
           speed, m_speed_threshold);
       StartRecording();
-      m_auto_recording_active = true;
       SetToolbarToolStatus(m_tb_item_id_record, true);
     }
-  } else if (speed < m_speed_threshold && m_auto_recording_active) {
+  } else if (m_recording) {
     // Add hysteresis to prevent rapid starting/stopping
     static const double HYSTERESIS = 0.2;  // 0.2 knots below threshold
     if (speed < (m_speed_threshold - HYSTERESIS)) {
-      // Check if this is the first time we've gone below threshold
+      // If we're recording and it was auto-started, handle stop delay
       if (!m_below_threshold_since.IsValid()) {
         m_below_threshold_since = wxDateTime::Now();
         wxLogMessage(
@@ -329,7 +488,6 @@ void vdr_pi::CheckAutoRecording(double speed) {
               _T("%.2f for %d minutes"),
               speed, m_speed_threshold, m_stop_delay);
           StopRecording();
-          m_auto_recording_active = false;
           SetToolbarToolStatus(m_tb_item_id_record, false);
           m_below_threshold_since = wxDateTime();  // Reset timer
         }
@@ -338,26 +496,26 @@ void vdr_pi::CheckAutoRecording(double speed) {
   }
 }
 
-bool vdr_pi::IsNMEAOrAIS(const wxString& line) {
+bool vdr_pi::IsNMEA0183OrAIS(const wxString& line) {
   // NMEA sentences start with $ or !
   return line.StartsWith("$") || line.StartsWith("!");
 }
 
 bool vdr_pi::ParseCSVHeader(const wxString& header) {
   // Reset indices
-  m_timestamp_idx = -1;
-  m_message_idx = -1;
+  m_timestamp_idx = static_cast<unsigned int>(-1);
+  m_message_idx = static_cast<unsigned int>(-1);
   m_header_fields.Clear();
 
   // If it looks like NMEA/AIS, it's not a header
-  if (IsNMEAOrAIS(header)) {
+  if (IsNMEA0183OrAIS(header)) {
     m_is_csv_file = false;
     return false;
   }
 
   // Split the header line
   wxStringTokenizer tokens(header, ",");
-  int idx = 0;
+  unsigned int idx = 0;
 
   while (tokens.HasMoreTokens()) {
     wxString field = tokens.GetNextToken().Trim(true).Trim(false).Lower();
@@ -401,7 +559,7 @@ bool ParseTimestamp(const wxString& timeStr, wxDateTime* timestamp) {
 }
 
 wxString vdr_pi::ParseCSVLine(const wxString& line, wxDateTime* timestamp) {
-  if (!m_is_csv_file || IsNMEAOrAIS(line)) return line;
+  if (!m_is_csv_file || IsNMEA0183OrAIS(line)) return line;
 
   wxArrayString fields;
   wxString currentField;
@@ -432,7 +590,7 @@ wxString vdr_pi::ParseCSVLine(const wxString& line, wxDateTime* timestamp) {
   fields.Add(currentField);
 
   // Parse timestamp if requested and available
-  if (timestamp && m_timestamp_idx >= 0 &&
+  if (timestamp && m_timestamp_idx != static_cast<unsigned int>(-1) &&
       m_timestamp_idx < fields.GetCount()) {
     if (!ParseTimestamp(fields[m_timestamp_idx], timestamp)) {
       return wxEmptyString;
@@ -440,7 +598,9 @@ wxString vdr_pi::ParseCSVLine(const wxString& line, wxDateTime* timestamp) {
   }
 
   // Get message field
-  if (m_message_idx >= fields.GetCount()) return wxEmptyString;
+  if (m_message_idx == static_cast<unsigned int>(-1) ||
+      m_message_idx >= fields.GetCount())
+    return wxEmptyString;
 
   // No need to unescape quotes here as we handled them during parsing
   return fields[m_message_idx];
@@ -513,24 +673,21 @@ void vdr_pi::ScheduleNextPlayback() {
 
   // Calculate how long to wait
   wxDateTime now = wxDateTime::UNow();
-  wxLogMessage("Base time: %s, Target time: %s, Now: %s. scaledMs: %f",
-               m_playback_base_time.FormatISOCombined(),
-               targetTime.FormatISOCombined(), now.FormatISOCombined(),
-               scaledMs);
   if (targetTime > now) {
     wxTimeSpan waitTime = targetTime - now;
-    Start(static_cast<int>(waitTime.GetMilliseconds().ToDouble()),
-          wxTIMER_ONE_SHOT);
+    m_timer->Start(static_cast<int>(waitTime.GetMilliseconds().ToDouble()),
+                   wxTIMER_ONE_SHOT);
   } else {
     // We're behind schedule, play immediately
-    Start(1, wxTIMER_ONE_SHOT);
+    m_timer->Start(1, wxTIMER_ONE_SHOT);
   }
 }
 
 void vdr_pi::SetInterval(int interval) {
   m_interval = interval;
-  if (IsRunning())                          // Timer started?
-    Start(m_interval, wxTIMER_CONTINUOUS);  // restart timer with new interval
+  if (m_timer->IsRunning())  // Timer started?
+    m_timer->Start(m_interval,
+                   wxTIMER_CONTINUOUS);  // restart timer with new interval
 }
 
 int vdr_pi::GetToolbarToolCount(void) { return 2; }
@@ -547,8 +704,8 @@ void vdr_pi::OnToolbarToolCallback(int id) {
     // Check if the toolbar button is being toggled off
     if (m_pvdrcontrol) {
       // Stop any active playback
-      if (IsRunning()) {
-        Stop();
+      if (m_timer->IsRunning()) {
+        m_timer->Stop();
         m_istream.Close();
       }
 
@@ -585,7 +742,7 @@ void vdr_pi::OnToolbarToolCallback(int id) {
     SetToolbarItemState(id, true);
   } else if (id == m_tb_item_id_record) {
     // Don't allow recording while playing
-    if (IsRunning()) {
+    if (m_timer->IsRunning()) {
       wxMessageBox(_("Stop playback before starting recording."),
                    _("VDR Plugin"), wxOK | wxICON_INFORMATION);
       SetToolbarItemState(id, false);
@@ -594,12 +751,15 @@ void vdr_pi::OnToolbarToolCallback(int id) {
     if (m_recording) {
       StopRecording();
       SetToolbarItemState(id, false);
+      // Recording was stopped manually, so disable auto-recording
+      m_recording_manually_disabled = true;
     } else {
       StartRecording();
       if (m_recording) {
         // Only set button state if recording started
         // successfully
         SetToolbarItemState(id, true);
+        m_recording_manually_disabled = false;
       }
     }
   }
@@ -644,6 +804,10 @@ bool vdr_pi::LoadConfig(void) {
   pConf->Read(_T("SpeedThreshold"), &m_speed_threshold, 0.5);
   pConf->Read(_T("StopDelay"), &m_stop_delay, 10);  // Default 10 minutes
 
+  pConf->Read(_T("EnableNMEA0183"), &m_protocols.nmea0183, true);
+  pConf->Read(_T("EnableNMEA2000"), &m_protocols.nmea2000, false);
+  pConf->Read(_T("EnableSignalK"), &m_protocols.signalK, false);
+
   int format;
   pConf->Read(_T("DataFormat"), &format,
               static_cast<int>(VDRDataFormat::RawNMEA));
@@ -670,6 +834,9 @@ bool vdr_pi::SaveConfig(void) {
   pConf->Write(_T("StopDelay"), m_stop_delay);
   pConf->Write(_T("DataFormat"), static_cast<int>(m_data_format));
 
+  pConf->Write(_T("EnableNMEA0183"), m_protocols.nmea0183);
+  pConf->Write(_T("EnableNMEA2000"), m_protocols.nmea2000);
+  pConf->Write(_T("EnableSignalK"), m_protocols.signalK);
   return true;
 }
 
@@ -724,7 +891,6 @@ void vdr_pi::StopRecording() {
 
   m_ostream.Close();
   m_recording = false;
-  m_auto_recording_active = false;
 
 #ifdef __ANDROID__
   bool AndroidSecureCopyFile(wxString in, wxString out);
@@ -781,8 +947,8 @@ void vdr_pi::StartPlayback() {
       return;
     }
   }
-
-  Start(m_interval, wxTIMER_CONTINUOUS);
+  wxLogMessage("Starting timer with interval %d ms", m_interval);
+  m_timer->Start(m_interval, wxTIMER_CONTINUOUS);
   m_playing = true;
 
   if (m_pvdrcontrol) {
@@ -795,7 +961,7 @@ void vdr_pi::StartPlayback() {
 void vdr_pi::PausePlayback() {
   if (!m_playing) return;
 
-  Stop();
+  m_timer->Stop();
   m_playing = false;
   if (m_pvdrcontrol) m_pvdrcontrol->UpdateControls();
 }
@@ -803,7 +969,7 @@ void vdr_pi::PausePlayback() {
 void vdr_pi::StopPlayback() {
   if (!m_playing) return;
 
-  Stop();
+  m_timer->Stop();
   m_playing = false;
   m_istream.Close();
 
@@ -814,12 +980,37 @@ void vdr_pi::StopPlayback() {
   }
 }
 
+void vdr_pi::SetDataFormat(VDRDataFormat format) {
+  // If format hasn't changed, do nothing.
+  if (format == m_data_format) {
+    return;
+  }
+
+  if (m_recording) {
+    // If recording is active, we need to handle the transition,
+    // e.g., from CSV to raw NMEA.
+    wxDateTime recordingStart = m_recording_start;
+    wxString currentDir = m_recording_dir;
+    StopRecording();
+    m_data_format = format;
+    // Start new recording
+    m_recording_start = recordingStart;  // Preserve original start time
+    m_recording_dir = currentDir;
+    StartRecording();
+  } else {
+    // Simply update the format if not recording.
+    m_data_format = format;
+  }
+}
+
 void vdr_pi::ShowPreferencesDialog(wxWindow* parent) {
   VDRPrefsDialog dlg(parent, wxID_ANY, m_data_format, m_recording_dir,
                      m_log_rotate, m_log_rotate_interval,
                      m_auto_start_recording, m_use_speed_threshold,
-                     m_speed_threshold, m_stop_delay);
+                     m_speed_threshold, m_stop_delay, m_protocols);
   if (dlg.ShowModal() == wxID_OK) {
+    bool previousNMEA2000State = m_protocols.nmea2000;
+    bool previousSignalKState = m_protocols.signalK;
     SetDataFormat(dlg.GetDataFormat());
     SetRecordingDir(dlg.GetRecordingDir());
     SetLogRotate(dlg.GetLogRotate());
@@ -828,7 +1019,16 @@ void vdr_pi::ShowPreferencesDialog(wxWindow* parent) {
     SetUseSpeedThreshold(dlg.GetUseSpeedThreshold());
     SetSpeedThreshold(dlg.GetSpeedThreshold());
     SetStopDelay(dlg.GetStopDelay());
+    m_protocols = dlg.GetProtocolSettings();
     SaveConfig();
+
+    // Update NMEA 2000 listeners if the setting changed
+    if (previousNMEA2000State != m_protocols.nmea2000) {
+      UpdateNMEA2000Listeners();
+    }
+    if (previousSignalKState != m_protocols.signalK) {
+      UpdateSignalKListeners();
+    }
 
     // Update UI if needed
     if (m_pvdrcontrol) {
@@ -1325,8 +1525,8 @@ bool vdr_pi::LoadFile(const wxString& filename) {
   // Reset all file-related state
   m_ifilename = filename;
   m_is_csv_file = false;
-  m_timestamp_idx = -1;
-  m_message_idx = -1;
+  m_timestamp_idx = static_cast<unsigned int>(-1);
+  m_message_idx = static_cast<unsigned int>(-1);
   m_header_fields.Clear();
   m_atFileEnd = false;
 

@@ -40,7 +40,8 @@ public:
   VDRPrefsDialog(wxWindow* parent, wxWindowID id, VDRDataFormat format,
                  const wxString& recordingDir, bool logRotate,
                  int logRotateInterval, bool autoStartRecording,
-                 bool useSpeedThreshold, double speedThreshold, int stopDelay);
+                 bool useSpeedThreshold, double speedThreshold, int stopDelay,
+                 const VDRProtocolSettings& protocols);
   VDRDataFormat GetDataFormat() const { return m_format; }
   wxString GetRecordingDir() const { return m_recording_dir; }
   bool GetLogRotate() const { return m_log_rotate; }
@@ -49,6 +50,7 @@ public:
   bool GetUseSpeedThreshold() const { return m_use_speed_threshold; }
   double GetSpeedThreshold() const { return m_speed_threshold; }
   int GetStopDelay() const { return m_stop_delay; }
+  VDRProtocolSettings GetProtocolSettings() const { return m_protocols; }
 
 private:
   void OnOK(wxCommandEvent& event);
@@ -72,6 +74,13 @@ private:
   wxSpinCtrlDouble* m_speedThresholdCtrl;
   wxSpinCtrl* m_stopDelayCtrl;
 
+  // Protocol selection checkboxes
+  wxCheckBox* m_nmea0183Check;
+  wxCheckBox* m_nmea2000Check;
+#if 0
+  wxCheckBox* m_signalKCheck;
+#endif
+
   VDRDataFormat m_format;
   wxString m_recording_dir;
   bool m_log_rotate;
@@ -80,6 +89,8 @@ private:
   bool m_use_speed_threshold;   // Use speed threshold for auto recording.
   double m_speed_threshold;     // Speed threshold for auto recording.
   int m_stop_delay;             // Minutes to wait before stopping.
+
+  VDRProtocolSettings m_protocols;
 
   DECLARE_EVENT_TABLE()
 };
