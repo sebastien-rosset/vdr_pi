@@ -162,6 +162,7 @@ bool vdr_pi::DeInit(void) {
     m_ostream.Close();
     m_recording = false;
 #ifdef __ANDROID__
+    bool AndroidSecureCopyFile(wxString in, wxString out);
     AndroidSecureCopyFile(m_temp_outfile, m_final_outfile);
     ::wxRemoveFile(m_temp_outfile);
 #endif
@@ -726,6 +727,7 @@ void vdr_pi::StopRecording() {
   m_auto_recording_active = false;
 
 #ifdef __ANDROID__
+  bool AndroidSecureCopyFile(wxString in, wxString out);
   AndroidSecureCopyFile(m_temp_outfile, m_final_outfile);
   ::wxRemoveFile(m_temp_outfile);
 #endif
