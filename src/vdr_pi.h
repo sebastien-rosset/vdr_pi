@@ -74,12 +74,16 @@ public:
   /** Cleans up resources and saves configuration. */
   bool DeInit(void);
 
-  int GetAPIVersionMajor();
-  int GetAPIVersionMinor();
-  int GetPlugInVersionMajor();
-  int GetPlugInVersionMinor();
+  int GetAPIVersionMajor() override;
+  int GetAPIVersionMinor() override;
+  int GetPlugInVersionMajor() override;
+  int GetPlugInVersionMinor() override;
+  int GetPlugInVersionPatch() override;
+  int GetPlugInVersionPost() override;
+  const char* GetPlugInVersionPre() override;
+  const char* GetPlugInVersionBuild() override;
   wxBitmap* GetPlugInBitmap();
-  wxString GetCommonName();
+  wxString GetCommonName() override;
   wxString GetShortDescription();
   wxString GetLongDescription();
 
