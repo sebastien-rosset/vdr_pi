@@ -57,7 +57,7 @@ set(SRC
 )
 
 
-set(PKG_API_LIB api-19)  #  A directory in libs/ e. g., api-18 or api-19
+set(PKG_API_LIB api-18)  #  A directory in libs/ e. g., api-18 or api-19
 
 macro(late_init)
   # Perform initialization after the PACKAGE_NAME library, compilers

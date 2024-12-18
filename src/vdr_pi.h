@@ -40,7 +40,9 @@
 #include <wx/file.h>
 #include <wx/aui/aui.h>
 #include <wx/radiobut.h>
+
 #include "ocpn_plugin.h"
+
 #include "config.h"
 
 #define VDR_TOOL_POSITION -1  // Request default positioning of toolbar tool
@@ -57,14 +59,23 @@ enum class VDRDataFormat {
             // Future formats can be added here
 };
 
+struct VDRProtocolSettings {
+  bool nmea0183;
+  bool nmea2000;
+  bool signalK;
+};
+
 struct CSVField {
   wxString name;
   int index;
   bool required;  // Is this field required for playback?
 };
 
+wxDECLARE_EVENT(EVT_N2K, ObservedEvt);
+wxDECLARE_EVENT(EVT_SIGNALK, ObservedEvt);
+
 /** Plugin class for the Voyage Data Recorder functionality. */
-class vdr_pi : public opencpn_plugin_117, wxTimer {
+class vdr_pi : public opencpn_plugin_118 {
 public:
   /** Creates a new VDR plugin instance. */
   vdr_pi(void* ppimgr);
@@ -94,6 +105,7 @@ public:
   void SetNMEASentence(wxString& sentence);
   /** Process incoming AIS sentences during recording. */
   void SetAISSentence(wxString& sentence);
+
   int GetToolbarToolCount(void);
   /** Handle toolbar button clicks. */
   void OnToolbarToolCallback(int id);
@@ -122,10 +134,13 @@ public:
   /** Schedule the next playback message based on the message timestamp. */
   void ScheduleNextPlayback();
 
+  /** Invoked during playback. */
+  void OnTimer(wxTimerEvent& event);
+
   /** Show the plugin preferences dialog. */
   void ShowPreferencesDialog(wxWindow* parent);
   VDRDataFormat GetDataFormat() const { return m_data_format; }
-  void SetDataFormat(VDRDataFormat dataFormat) { m_data_format = dataFormat; };
+  void SetDataFormat(VDRDataFormat dataFormat);
   wxString GetRecordingDir() const { return m_recording_dir; }
   void SetRecordingDir(const wxString& dir) { m_recording_dir = dir; }
   wxString GenerateFilename() const;
@@ -160,16 +175,37 @@ public:
   void SetSpeedThreshold(double threshold) { m_speed_threshold = threshold; }
   int GetStopDelay() const { return m_stop_delay; }
   void SetStopDelay(int minutes) { m_stop_delay = minutes; }
+  /**
+   * Check if auto-recording should be started or stopped based on boat speed.
+   */
   void CheckAutoRecording(double speed);
 
 private:
+  class TimerHandler : public wxTimer {
+  public:
+    TimerHandler(vdr_pi* plugin) : m_plugin(plugin) {}
+    void Notify() { m_plugin->Notify(); }
+
+  private:
+    vdr_pi* m_plugin;
+  };
   bool LoadConfig(void);
   bool SaveConfig(void);
-  wxString FormatNMEAAsCSV(const wxString& nmea);
+  wxString FormatNMEA0183AsCSV(const wxString& nmea);
   bool ParseCSVHeader(const wxString& header);
   wxString ParseCSVLine(const wxString& line, wxDateTime* timestamp);
-  bool IsNMEAOrAIS(const wxString& line);
+  /** Return true if the message is a NMEA0183 or AIS message */
+  bool IsNMEA0183OrAIS(const wxString& message);
+  /** Parse timestamp from NMEA0183 sentence. */
   bool ParseNMEATimestamp(const wxString& nmea, wxDateTime* timestamp);
+  /** Update SignalK event listeners when preferences are changed. */
+  void UpdateSignalKListeners();
+  /** Update NMEA 2000 event listeners when preferences are changed. */
+  void UpdateNMEA2000Listeners();
+  /** Process incoming NMEA 2000 message from OpenCPN. */
+  void OnN2KEvent(wxCommandEvent& ev);
+  /** Process incoming SignalK message from OpenCPN. */
+  void OnSignalKEvent(wxCommandEvent& ev);
 
   int m_tb_item_id_record;
   int m_tb_item_id_play;
@@ -193,17 +229,22 @@ private:
   bool m_atFileEnd;
 
   VDRDataFormat m_data_format;
+  VDRProtocolSettings m_protocols;
+
   /** Input file stream for playback. */
   wxTextFile m_istream;
   /** Output file stream for recording. */
   wxFile m_ostream;
   wxBitmap m_panelBitmap;
 
+  std::vector<std::shared_ptr<ObservableListener>> m_n2k_listeners;
+  std::vector<std::shared_ptr<ObservableListener>> m_signalk_listeners;
+
   /** Flag indicating if current file is CSV format. */
   bool m_is_csv_file;
   wxArrayString m_header_fields;
-  int m_timestamp_idx;
-  int m_message_idx;
+  unsigned int m_timestamp_idx;
+  unsigned int m_message_idx;
 
   /** Whether to automatically rotate log files. */
   bool m_log_rotate;
@@ -221,15 +262,34 @@ private:
   /** The current timestamp during VDR playback. */
   wxDateTime m_currentTimestamp;
 
-  bool m_auto_start_recording;  // Automatically start recording.
-  bool m_use_speed_threshold;   // Use speed threshold for auto recording.
-  double m_speed_threshold;     // Speed threshold for auto recording.
-  double m_last_speed;          // Last known boat speed.
-  /** Flag to control whether automatic recording is enabled. */
-  bool m_auto_recording_active;
+  /**
+   * Configuration parameter to control whether auto-start recording is enabled
+   * or not.
+   *
+   * If enabled, recording will start automatically when the plugin is loaded.
+   * Optionally, there may be a speed threshold that must be met before
+   * recording starts.
+   */
+  bool m_auto_start_recording;
+  bool m_use_speed_threshold;  // Use speed threshold for auto recording.
+  double m_speed_threshold;    // Speed threshold for auto recording.
+  double m_last_speed;         // Last known boat speed.
+  /**
+   * Indicate user has manually disabled recording while auto-recording was in
+   * progress.
+   *
+   * This flag is used to prevent auto-recording from starting again immediately
+   * after the user manually stops recording.
+   * If the user manually stops recording, auto-recording will only start again
+   * if the boat speed drops below the threshold and then rises above it again.
+   */
+  bool m_recording_manually_disabled;
   int m_stop_delay;  // Minutes to wait before stopping.
   /** When speed first dropped below threshold. */
   wxDateTime m_below_threshold_since;
+
+  wxEvtHandler* m_eventHandler;
+  TimerHandler* m_timer;
 
 #ifdef __ANDROID__
   wxString m_temp_outfile;
