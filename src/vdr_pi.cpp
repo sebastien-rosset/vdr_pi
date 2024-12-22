@@ -1490,27 +1490,30 @@ VDRControl::VDRControl(wxWindow* parent, wxWindowID id, vdr_pi* vdr)
     }
   }
 }
-
 void VDRControl::CreateControls() {
   // Main vertical sizer
   wxBoxSizer* mainSizer = new wxBoxSizer(wxVERTICAL);
 
   // File information section
-  wxStaticBox* fileBox = new wxStaticBox(this, wxID_ANY, _("VDR File"));
-  wxStaticBoxSizer* fileSizer = new wxStaticBoxSizer(fileBox, wxVERTICAL);
-  m_loadBtn = new wxButton(this, ID_VDR_LOAD, _("Load"));
-  fileSizer->Add(m_loadBtn, 0, wxALL | wxALIGN_CENTER, 5);
+  wxBoxSizer* fileSizer = new wxBoxSizer(wxHORIZONTAL);
+  m_loadBtn = new wxButton(this, ID_VDR_LOAD, wxString::FromUTF8("📂"),
+                           wxDefaultPosition, wxDefaultSize, 0);
+  wxSize loadButtonSize(25, 25);
+  m_loadBtn->SetMinSize(loadButtonSize);
+  m_loadBtn->SetInitialSize(loadButtonSize);
+  m_loadBtn->SetToolTip(_("Load VDR File"));
+  fileSizer->Add(m_loadBtn, 0, wxALL | wxALIGN_CENTER_VERTICAL, 2);
+
   m_fileLabel =
       new wxStaticText(this, wxID_ANY, _("No file loaded"), wxDefaultPosition,
                        wxDefaultSize, wxST_ELLIPSIZE_START);
-  fileSizer->Add(m_fileLabel, 1, wxEXPAND | wxALL, 5);
-  mainSizer->Add(fileSizer, 0, wxEXPAND | wxALL,
-                 5);  // Add fileSizer, not fileBox
+  fileSizer->Add(m_fileLabel, 1, wxEXPAND | wxALL | wxALIGN_CENTER_VERTICAL, 2);
+  mainSizer->Add(fileSizer, 0, wxEXPAND | wxALL, 2);
 
-  // Playback section
-  wxStaticBox* playBox = new wxStaticBox(this, wxID_ANY, _("Playback"));
-  wxStaticBoxSizer* playSizer = new wxStaticBoxSizer(playBox, wxVERTICAL);
+  // Play controls and progress in one row
+  wxBoxSizer* controlSizer = new wxBoxSizer(wxHORIZONTAL);
 
+  // Play button setup
   m_playBtnTooltip = _("Start Playback");
   m_pauseBtnTooltip = _("Pause Playback");
   m_stopBtnTooltip = _("End of File");
@@ -1518,43 +1521,36 @@ void VDRControl::CreateControls() {
   m_playPauseBtn =
       new wxButton(this, ID_VDR_PLAY_PAUSE, wxString::FromUTF8("▶"),
                    wxDefaultPosition, wxDefaultSize, 0);
-  wxSize buttonSize(40, 40);
+  wxSize buttonSize(25, 25);
   m_playPauseBtn->SetMinSize(buttonSize);
   m_playPauseBtn->SetInitialSize(buttonSize);
   wxFont font = m_playPauseBtn->GetFont();
-  font.SetPointSize(font.GetPointSize() * 1.5);
+  font.SetPointSize(font.GetPointSize() * 1.2);
   m_playPauseBtn->SetFont(font);
   m_playPauseBtn->SetToolTip(m_playBtnTooltip);
-  playSizer->Add(m_playPauseBtn, 0, wxALL | wxALIGN_CENTER | wxSHAPED, 5);
+  controlSizer->Add(m_playPauseBtn, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 3);
 
-  // Speed control
-  wxBoxSizer* speedSizer = new wxBoxSizer(wxHORIZONTAL);
-  speedSizer->Add(new wxStaticText(this, wxID_ANY, _("Replay Speed:")), 0,
-                  wxALIGN_CENTER_VERTICAL | wxALL, 5);
-
-  m_speedSlider =
-      new wxSlider(this, wxID_ANY, 1, 1, 100, wxDefaultPosition, wxDefaultSize,
-                   wxSL_HORIZONTAL | wxSL_VALUE_LABEL);
-  speedSizer->Add(m_speedSlider, 1, wxEXPAND | wxALL, 5);
-  playSizer->Add(speedSizer, 0, wxEXPAND);
-
-  // Progress gauge
-  wxBoxSizer* timeSizer = new wxBoxSizer(wxVERTICAL);
-
-  // Create time label with fixed width to prevent truncation
-  wxSize timeSize(300, -1);
-  m_timeLabel = new wxStaticText(this, wxID_ANY, _("Date and Time: --"),
-                                 wxDefaultPosition, timeSize);
-  timeSizer->Add(m_timeLabel, 0, wxEXPAND | wxALL, 5);
-
+  // Progress slider in the same row as play button
   m_progressSlider =
       new wxSlider(this, ID_VDR_PROGRESS, 0, 0, 1000, wxDefaultPosition,
                    wxDefaultSize, wxSL_HORIZONTAL | wxSL_BOTTOM);
-  timeSizer->Add(m_progressSlider, 1, wxEXPAND | wxALL, 5);
-  playSizer->Add(timeSizer, 0, wxEXPAND);
+  controlSizer->Add(m_progressSlider, 1, wxEXPAND | wxALIGN_CENTER_VERTICAL, 0);
+  mainSizer->Add(controlSizer, 0, wxEXPAND | wxALL, 2);
 
-  mainSizer->Add(playSizer, 0, wxEXPAND | wxALL,
-                 5);  // Add playSizer, not playBox
+  // Time label
+  m_timeLabel = new wxStaticText(this, wxID_ANY, _("Date and Time: --"),
+                                 wxDefaultPosition, wxSize(200, -1));
+  mainSizer->Add(m_timeLabel, 0, wxEXPAND | wxALL, 2);
+
+  // Speed control
+  wxBoxSizer* speedSizer = new wxBoxSizer(wxHORIZONTAL);
+  speedSizer->Add(new wxStaticText(this, wxID_ANY, _("Speed:")), 0,
+                  wxALIGN_CENTER_VERTICAL | wxRIGHT, 3);
+  m_speedSlider =
+      new wxSlider(this, wxID_ANY, 1, 1, 100, wxDefaultPosition, wxDefaultSize,
+                   wxSL_HORIZONTAL | wxSL_VALUE_LABEL);
+  speedSizer->Add(m_speedSlider, 1, wxEXPAND | wxALIGN_CENTER_VERTICAL, 0);
+  mainSizer->Add(speedSizer, 0, wxEXPAND | wxALL, 2);
 
   SetSizer(mainSizer);
   mainSizer->SetMinSize(wxSize(350, -1));
