@@ -1089,7 +1089,7 @@ bool vdr_pi::ScanFileTimestamps() {
   m_firstTimestamp = wxDateTime();
   m_lastTimestamp = wxDateTime();
   m_currentTimestamp = wxDateTime();
-  bool foundFirst = false;
+  bool foundFirst = false;  // Flag to track first valid timestamp found.
   wxDateTime previousTimestamp;
 
   // Read first line to check format.
@@ -1124,20 +1124,36 @@ bool vdr_pi::ScanFileTimestamps() {
       }
 
       if (validTimestamp) {
-        if (previousTimestamp.IsValid() && timestamp < previousTimestamp) {
-          wxLogMessage(
-              "VDR file contains non-monotonically increasing timestamps");
-          // If the VDR file contains non-monotonically increasing timestamps,
-          // (i.e., the file is not in chronological order), we cannot use
-          // timestamps for playback. We will still allow playback based on
-          // line number for NMEA files without timestamps.
-          m_has_timestamps = false;
-          m_firstTimestamp = wxDateTime();
-          m_lastTimestamp = wxDateTime();
-          m_currentTimestamp = wxDateTime();
-          // Reset file position
-          m_istream.GoToLine(0);
-          return !m_is_csv_file;
+        if (previousTimestamp.IsValid()) {
+          wxTimeSpan diff = timestamp - previousTimestamp;
+          // Be lenient with small jumps, but warn about large ones.
+          // One scenario to consider is a RMC sentence with milliseconds
+          // precision, followed by a ZDA sentence with only seconds precision.
+          // Example:
+          // RMC timestamp: 2016-05-06T15:53:51.600Z
+          // ZDA timestamp: 2016-05-06T15:53:51.000Z
+          // A naive comparison would show a 600ms backwards jump, but we should
+          // ignore it. On the other hand, if the time goes backwards by a large
+          // amount (e.g., 3 days), we cannot use the timestamps in the file.
+          if (diff.GetSeconds().ToLong() < -5) {
+            wxLogMessage(
+                "VDR file contains significant timestamp jump backwards. "
+                "Previous ts: %s, Current ts: %s",
+                FormatIsoDateTime(previousTimestamp),
+                FormatIsoDateTime(timestamp));
+            // If the VDR file contains non-monotonically increasing timestamps,
+            // (i.e., the file is not in chronological order), we cannot use
+            // timestamps for playback. We will still allow playback based on
+            // line number for NMEA files without timestamps.
+            m_has_timestamps = false;
+            m_firstTimestamp = wxDateTime();
+            m_lastTimestamp = wxDateTime();
+            m_currentTimestamp = wxDateTime();
+            // Reset file position
+            m_istream.GoToLine(0);
+            m_fileStatus = _("Timestamps are not in chronological order");
+            return !m_is_csv_file;
+          }
         }
         previousTimestamp = timestamp;
 
@@ -1161,11 +1177,13 @@ bool vdr_pi::ScanFileTimestamps() {
   m_has_timestamps = foundFirst;
 
   if (m_has_timestamps) {
+    m_fileStatus.Clear();
     wxLogMessage("Found timestamps in %s file from %s to %s",
                  m_is_csv_file ? "CSV" : "NMEA",
                  FormatIsoDateTime(m_firstTimestamp),
                  FormatIsoDateTime(m_lastTimestamp));
   } else {
+    m_fileStatus = _("No timestamps found (missing RMC/ZDA)");
     wxLogMessage("No timestamps found in %s file",
                  m_is_csv_file ? "CSV" : "NMEA");
   }
@@ -1351,8 +1369,33 @@ bool vdr_pi::ParseNMEATimestamp(const wxString& nmea, wxDateTime* timestamp) {
   int month = currentDate.GetMonth() + 1;  // wxDateTime months are 0-11
   int day = currentDate.GetDay();
 
+  // Function to parse time HHMMSS or HHMMSS.sss (millisecond precision
+  // optional)
+  auto parseTimeField = [](const wxString& timeStr, int* hour, int* minute,
+                           int* second, int* millisecond) -> bool {
+    if (timeStr.length() < 6) return false;
+
+    // Parse base time components
+    *hour = wxAtoi(timeStr.Mid(0, 2));
+    *minute = wxAtoi(timeStr.Mid(2, 2));
+    *second = wxAtoi(timeStr.Mid(4, 2));
+
+    // Parse optional milliseconds
+    *millisecond = 0;
+    if (timeStr.length() > 7) {  // ".xxx" format
+      double subseconds = wxAtof(timeStr.Mid(6));
+      *millisecond = static_cast<int>(subseconds * 1000);
+    }
+
+    // Validate
+    return *hour >= 0 && *hour <= 23 && *minute >= 0 && *minute <= 59 &&
+           *second >= 0 && *second <= 59 && *millisecond >= 0 &&
+           *millisecond < 1000;
+  };
+
   if (sentenceId.Contains(wxT("RMC"))) {  // GPRMC, GNRMC etc
-    // Format: $GPRMC,HHMMSS.ss,A,LLLL.LL,a,YYYYY.YY,a,x.x,x.x,DDMMYY,x.x,a*hh
+    // Format: $GPRMC,HHMMSS.sss,A,LLLL.LL,a,YYYYY.YY,a,x.x,x.x,DDMMYY,x.x,a*hh
+    // Millisecond precision is optional.
     if (!tok.HasMoreTokens()) return false;
     wxString timeStr = tok.GetNextToken();
 
@@ -1376,24 +1419,16 @@ bool vdr_pi::ParseNMEATimestamp(const wxString& nmea, wxDateTime* timestamp) {
       }
     }
 
-    // Parse time HHMMSS.ss
-    if (timeStr.length() >= 6) {
-      int hour = wxAtoi(timeStr.Mid(0, 2));
-      int minute = wxAtoi(timeStr.Mid(2, 2));
-      int second = wxAtoi(timeStr.Mid(4, 2));
-      double subseconds = timeStr.length() > 7 ? wxAtof(timeStr.Mid(7)) : 0.0;
-
-      // Validate time components
-      if (hour < 0 || hour > 23 || minute < 0 || minute > 59 || second < 0 ||
-          second > 59 || subseconds < 0 || subseconds >= 1) {
-        return false;
-      }
-      timestamp->Set(day, static_cast<wxDateTime::Month>(month - 1), year, hour,
-                     minute, second, static_cast<int>(subseconds * 1000));
-      return timestamp->IsValid();
+    // Parse time HHMMSS or HHMMSS.sss (millisecond precision optional)
+    int hour, minute, second, millisecond;
+    if (!parseTimeField(timeStr, &hour, &minute, &second, &millisecond)) {
+      return false;
     }
+    timestamp->Set(day, static_cast<wxDateTime::Month>(month - 1), year, hour,
+                   minute, second, millisecond);
+    return timestamp->IsValid();
   } else if (sentenceId.Contains(wxT("ZDA"))) {  // GPZDA, GNZDA etc
-    // Format: $GPZDA,HHMMSS.ss,DD,MM,YYYY,xx,xx*hh
+    // Format: $GPZDA,HHMMSS.sss,DD,MM,YYYY,xx,xx*hh
     if (!tok.HasMoreTokens()) return false;
     wxString timeStr = tok.GetNextToken();
 
@@ -1416,22 +1451,14 @@ bool vdr_pi::ParseNMEATimestamp(const wxString& nmea, wxDateTime* timestamp) {
       }
     }
 
-    // Parse time HHMMSS.ss
-    if (timeStr.length() >= 6) {
-      int hour = wxAtoi(timeStr.Mid(0, 2));
-      int minute = wxAtoi(timeStr.Mid(2, 2));
-      int second = wxAtoi(timeStr.Mid(4, 2));
-      double subseconds = timeStr.length() > 7 ? wxAtof(timeStr.Mid(7)) : 0.0;
-
-      // Validate time components
-      if (hour < 0 || hour > 23 || minute < 0 || minute > 59 || second < 0 ||
-          second > 59 || subseconds < 0 || subseconds >= 1) {
-        return false;
-      }
-      timestamp->Set(day, static_cast<wxDateTime::Month>(month - 1), year, hour,
-                     minute, second, static_cast<int>(subseconds * 1000));
-      return timestamp->IsValid();
+    // Parse time HHMMSS or HHMMSS.sss (millisecond precision optional)
+    int hour, minute, second, millisecond;
+    if (!parseTimeField(timeStr, &hour, &minute, &second, &millisecond)) {
+      return false;
     }
+    timestamp->Set(day, static_cast<wxDateTime::Month>(month - 1), year, hour,
+                   minute, second, millisecond);
+    return timestamp->IsValid();
   }
 
   return false;
@@ -1551,6 +1578,10 @@ void VDRControl::CreateControls() {
                    wxSL_HORIZONTAL | wxSL_VALUE_LABEL);
   speedSizer->Add(m_speedSlider, 1, wxEXPAND | wxALIGN_CENTER_VERTICAL, 0);
   mainSizer->Add(speedSizer, 0, wxEXPAND | wxALL, 2);
+
+  // Status label (info/error messages).
+  m_statusLabel = new wxStaticText(this, wxID_ANY, wxEmptyString);
+  mainSizer->Add(m_statusLabel, 0, wxEXPAND | wxALL, 5);
 
   SetSizer(mainSizer);
   mainSizer->SetMinSize(wxSize(350, -1));
@@ -1704,8 +1735,10 @@ void VDRControl::UpdateControls() {
   } else {
     m_timeLabel->SetLabel(_("Date and Time: --"));
   }
-
-  // Update layout
+  // Update status message if present
+  const wxString& status = m_pvdr->GetFileStatus();
+  m_statusLabel->SetLabel(status);
+  m_statusLabel->Show(!status.IsEmpty());
   Layout();
 }
 
