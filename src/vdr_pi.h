@@ -53,28 +53,52 @@
 
 class VDRControl;
 
+/**
+ * Data storage formats supported by the VDR plugin.
+ *
+ * Controls how data is structured and stored in VDR files. Each format offers
+ * different capabilities for data organization and playback control.
+ */
 enum class VDRDataFormat {
-  RawNMEA,  // Default raw NMEA format
-  CSV,      // CSV with timestamps
-            // Future formats can be added here
+  RawNMEA,  //!< Raw NMEA sentences stored unmodified
+  CSV,  //!< Structured CSV format with timestamps and message type metadata.
+        // Future formats can be added here
 };
 
+/**
+ * Protocol recording configuration settings.
+ *
+ * Controls which maritime data protocols are captured during recording.
+ * Multiple protocols can be enabled simultaneously.
+ */
 struct VDRProtocolSettings {
-  bool nmea0183;
-  bool nmea2000;
-  bool signalK;
+  bool nmea0183;  //!< Enable NMEA 0183 sentence recording
+  bool nmea2000;  //!< Enable NMEA 2000 PGN message recording
+  bool signalK;   //!< Enable Signal K data recording
 };
 
+/**
+ * Column definition for CSV format files.
+ *
+ * Describes the structure and requirements of fields in CSV format
+ * VDR files to support proper parsing during playback.
+ */
 struct CSVField {
-  wxString name;
-  int index;
-  bool required;  // Is this field required for playback?
+  wxString name;  //!< Field name in CSV header
+  int index;      //!< Zero-based column position in CSV file
+  bool required;  //!< Field must be present for valid playback.
 };
 
 wxDECLARE_EVENT(EVT_N2K, ObservedEvt);
 wxDECLARE_EVENT(EVT_SIGNALK, ObservedEvt);
 
-/** Plugin class for the Voyage Data Recorder functionality. */
+/**
+ * Voyage Data Recorder plugin for OpenCPN
+ *
+ * Records maritime data including NMEA 0183, NMEA 2000 and SignalK messages to
+ * files for later playback. Supports automatic recording based on vessel speed
+ * and automatic file rotation for data management.
+ */
 class vdr_pi : public opencpn_plugin_118 {
 public:
   /** Creates a new VDR plugin instance. */
@@ -98,14 +122,38 @@ public:
   wxString GetShortDescription();
   wxString GetLongDescription();
 
+  /**
+   * Process timer notification for playback events.
+   *
+   * Handles timed playback of recorded data, managing message timing
+   * and maintaining playback state.
+   */
   void Notify();
+  /**
+   * Set the interval for timer notifications.
+   * @param interval Timer interval in milliseconds
+   */
   void SetInterval(int interval);
 
-  /** Process incoming NMEA sentences during recording. */
+  /**
+   * Process an incoming NMEA 0183 sentence for recording.
+   *
+   * Records the sentence if recording is active and NMEA 0183 is enabled.
+   * For RMC sentences, also processes vessel speed for auto-recording.
+   * @param sentence NMEA sentence to process
+   */
   void SetNMEASentence(wxString& sentence);
-  /** Process incoming AIS sentences during recording. */
+  /**
+   * Process an incoming AIS message for recording.
+   *
+   * Records AIS messages similarly to NMEA sentences if recording is active.
+   * @param sentence AIS message to process
+   */
   void SetAISSentence(wxString& sentence);
-
+  /**
+   * Get number of toolbar items added by plugin.
+   * @return Number of toolbar items
+   */
   int GetToolbarToolCount(void);
   /** Handle toolbar button clicks. */
   void OnToolbarToolCallback(int id);
@@ -143,46 +191,151 @@ public:
 
   /** Show the plugin preferences dialog. */
   void ShowPreferencesDialog(wxWindow* parent);
+  /** Get current data format setting for VDR output */
   VDRDataFormat GetDataFormat() const { return m_data_format; }
+  /**
+   * Set data format for VDR recording.
+   *
+   * If recording is active, stops current recording and starts new one with
+   * updated format.
+   * @param dataFormat New format to use for recording.
+   */
   void SetDataFormat(VDRDataFormat dataFormat);
+  /** Get configured recording directory. */
   wxString GetRecordingDir() const { return m_recording_dir; }
+  /**
+   * Set directory for storing VDR recordings.
+   * @param dir Path to recording directory
+   */
   void SetRecordingDir(const wxString& dir) { m_recording_dir = dir; }
+  /**
+   * Generate filename for new recording based on current UTC time.
+   *
+   * Creates filename in format: vdr_YYYYMMDDTHHMMSSz with appropriate
+   * extension.
+   */
   wxString GenerateFilename() const;
 
+  /** Check if automatic log rotation is enabled. */
   bool IsLogRotateEnabled() const { return m_log_rotate; }
+  /**
+   * Enable or disable automatic log rotation.
+   * @param enable True to enable rotation
+   */
   void SetLogRotate(bool enable) { m_log_rotate = enable; }
+  /** Get configured interval between log rotations in hours. */
   int GetLogRotateInterval() const { return m_log_rotate_interval; }
+  /**
+   * Set interval for automatic log rotation.
+   * @param hours Hours between rotations
+   */
   void SetLogRotateInterval(int hours) { m_log_rotate_interval = hours; }
+  /** Check if current recording file needs rotation based on elapsed time. */
   void CheckLogRotation();
+  /**
+   * Update toolbar button state.
+   * @param id Toolbar item identifier
+   * @param status New enabled/pressed state
+   */
   void SetToolbarToolStatus(int id, bool status);
+  /** Get identifier for play button toolbar item. */
   int GetPlayToolbarItemId() const { return m_tb_item_id_play; }
 
+  /**
+   * Scan loaded file for timestamp information.
+   *
+   * Analyzes file to determine if it contains valid timestamps and stores
+   * first/last timestamps if found. Required for proper playback timing.
+   * @return True if valid timestamps found
+   */
   bool ScanFileTimestamps();
+  /**
+   * Seek playback position to specified fraction of file.
+   *
+   * For files with timestamps, seeks to matching timestamp.
+   * For files without timestamps, seeks to line number.
+   * @param fraction Position as fraction between 0-1
+   * @return True if seek successful
+   */
   bool SeekToFraction(double fraction);
+  /**
+   * Get current playback position as fraction of total.
+   *
+   * For files with timestamps, based on timestamp position.
+   * For files without timestamps, based on line position.
+   * @return Position as fraction between 0-1
+   */
   double GetProgressFraction() const;
-
+  /** Get timestamp of first message in file. */
   wxDateTime GetFirstTimestamp() const { return m_firstTimestamp; }
+  /** Get timestamp of last message in file. */
   wxDateTime GetLastTimestamp() const { return m_lastTimestamp; }
+  /** Get timestamp at current playback position. */
   wxDateTime GetCurrentTimestamp() const { return m_currentTimestamp; }
+  /**
+   * Set timestamp for current playback position.
+   * @param timestamp New current timestamp
+   */
   void SetCurrentTimestamp(const wxDateTime& timestamp) {
     m_currentTimestamp = timestamp;
   }
+  /**
+   * Get path of currently loaded input file.
+   *
+   * Returns empty string if no file loaded or file doesn't exist.
+   */
   wxString GetInputFile() const;
+  /** Clear current input file reference and close file if open. */
   void ClearInputFile();
+  /**
+   * Adjust playback timing based on speed multiplier setting.
+   *
+   * Updates base time to maintain proper message timing when
+   * playback speed is changed.
+   */
   void AdjustPlaybackBaseTime();
-
+  /** Check if automatic recording start is enabled. */
   bool IsAutoStartRecording() const { return m_auto_start_recording; }
+  /**
+   * Enable or disable automatic recording start.
+   * @param enable True to enable auto-start
+   */
   void SetAutoStartRecording(bool enable) { m_auto_start_recording = enable; }
+  /** Check if speed threshold for recording is enabled. */
   bool IsUseSpeedThreshold() const { return m_use_speed_threshold; }
+  /**
+   * Enable or disable speed threshold for recording.
+   * @param enable True to enable threshold
+   */
   void SetUseSpeedThreshold(bool enable) { m_use_speed_threshold = enable; }
+  /** Get configured speed threshold in knots. */
   double GetSpeedThreshold() const { return m_speed_threshold; }
+  /**
+   * Set speed threshold for automatic recording.
+   * @param threshold Speed threshold in knots
+   */
   void SetSpeedThreshold(double threshold) { m_speed_threshold = threshold; }
+  /** Get configured delay before stopping recording. */
   int GetStopDelay() const { return m_stop_delay; }
+  /**
+   * Set delay before stopping recording when speed drops.
+   * @param minutes Minutes to wait before stopping
+   */
   void SetStopDelay(int minutes) { m_stop_delay = minutes; }
   /**
    * Check if auto-recording should be started or stopped based on boat speed.
+   *
+   * Starts recording when speed exceeds threshold and stops recording
+   * after configured delay when speed drops below threshold.
+   * @param speed Current boat speed in knots
    */
   void CheckAutoRecording(double speed);
+  /**
+   * Check if current file contains valid message timestamps.
+   *
+   * File must have monotonically increasing timestamps for
+   * timestamp-based playback.
+   */
   bool HasValidTimestamps() const;
   const wxString& GetFileStatus() const { return m_fileStatus; }
 
@@ -258,22 +411,46 @@ private:
   /** Flag indicating whether end of file has been reached. */
   bool m_atFileEnd;
 
+  /** Current data format used for recording and playback. */
   VDRDataFormat m_data_format;
+  /** Active protocol recording settings. */
   VDRProtocolSettings m_protocols;
 
   /** Input file stream for playback. */
   wxTextFile m_istream;
   /** Output file stream for recording. */
   wxFile m_ostream;
+  /** Plugin toolbar icon. */
   wxBitmap m_panelBitmap;
 
+  /**
+   * Active NMEA 2000 message listeners.
+   *
+   * Each listener monitors specific PGN messages from the network.
+   */
   std::vector<std::shared_ptr<ObservableListener>> m_n2k_listeners;
+  /**
+   * Active Signal K data listeners.
+   *
+   * Each listener monitors specific Signal K data paths.
+   */
   std::vector<std::shared_ptr<ObservableListener>> m_signalk_listeners;
 
   /** Flag indicating if current file is CSV format. */
   bool m_is_csv_file;
+  /** Column headers when reading CSV format files. */
   wxArrayString m_header_fields;
+  /**
+   * Index of timestamp column in CSV format.
+   *
+   * Set to -1 if timestamp column not found.
+   */
   unsigned int m_timestamp_idx;
+  /**
+   * Index of NMEA message column in CSV format.
+   *
+   * Set to -1 if message column not found.
+   */
   unsigned int m_message_idx;
 
   /** Whether to automatically rotate log files. */
@@ -303,9 +480,9 @@ private:
    * recording starts.
    */
   bool m_auto_start_recording;
-  bool m_use_speed_threshold;  // Use speed threshold for auto recording.
-  double m_speed_threshold;    // Speed threshold for auto recording.
-  double m_last_speed;         // Last known boat speed.
+  bool m_use_speed_threshold;  //!< Use speed threshold for auto recording.
+  double m_speed_threshold;    //!< Speed threshold for auto recording.
+  double m_last_speed;         //!< Last known boat speed.
   /**
    * Indicate user has manually disabled recording while auto-recording was in
    * progress.
@@ -316,7 +493,7 @@ private:
    * if the boat speed drops below the threshold and then rises above it again.
    */
   bool m_recording_manually_disabled;
-  int m_stop_delay;  // Minutes to wait before stopping.
+  int m_stop_delay;  //!< Minutes to wait before stopping.
   /** When speed first dropped below threshold. */
   wxDateTime m_below_threshold_since;
   wxString m_fileStatus;
@@ -330,42 +507,108 @@ private:
 #endif
 };
 
+/**
+ * UI control panel for VDR playback functionality.
+ *
+ * Provides controls for loading VDR files, starting/pausing playback,
+ * adjusting playback speed, and monitoring playback progress.
+ */
 class VDRControl : public wxWindow {
 public:
+  /**
+   * Create a new VDR control panel.
+   *
+   * Initializes UI elements and loads any previously configured VDR file.
+   * @param pparent Parent window for the control panel
+   * @param id Window identifier
+   * @param vdr Owner VDR plugin instance
+   */
   VDRControl(wxWindow* pparent, wxWindowID id, vdr_pi* vdr);
+
+  /**
+   * Update UI elements for color scheme changes.
+   * @param cs New color scheme to apply
+   */
   void SetColorScheme(PI_ColorScheme cs);
+
+  /**
+   * Update progress indication for playback position.
+   * @param fraction Current position as fraction between 0-1
+   */
   void SetProgress(double fraction);
+
+  /** Update state of UI controls based on playback status. */
   void UpdateControls();
+
+  /**
+   * Update displayed filename in UI.
+   * @param filename Path of currently loaded file
+   */
   void UpdateFileLabel(const wxString& filename);
+
+  /** Update displayed timestamp in UI based on current playback position. */
   void UpdateTimeLabel();
+
+  /** Get current playback speed multiplier setting. */
   double GetSpeedMultiplier() const { return m_speedSlider->GetValue(); }
 
 private:
+  /** Create and layout UI controls. */
   void CreateControls();
+
+  /**
+   * Handle file load button clicks.
+   *
+   * Shows file selection dialog and loads selected VDR file.
+   */
   void OnLoadButton(wxCommandEvent& event);
+
+  /**
+   * Handle play/pause button clicks.
+   *
+   * Toggles between playback and paused states.
+   */
   void OnPlayPauseButton(wxCommandEvent& event);
+
+  /**
+   * Handle playback speed adjustment.
+   *
+   * Updates playback timing when speed multiplier changes.
+   */
   void OnSpeedSliderUpdated(wxCommandEvent& event);
 
+  /**
+   * Handle progress slider dragging.
+   *
+   * Temporarily pauses playback while user drags position slider.
+   */
   void OnProgressSliderUpdated(wxScrollEvent& even);
+
+  /**
+   * Handle progress slider release.
+   *
+   * Seeks to new position and resumes playback if previously playing.
+   */
   void OnProgressSliderEndDrag(wxScrollEvent& event);
 
+  /** Handle data format selection changes. */
   void OnDataFormatRadioButton(wxCommandEvent& event);
 
-  wxButton* m_loadBtn;
-  wxButton* m_playPauseBtn;
-  wxString m_playBtnTooltip;
-  wxString m_pauseBtnTooltip;
-  wxString m_stopBtnTooltip;
+  wxButton* m_loadBtn;         //!< Button to load VDR file
+  wxButton* m_playPauseBtn;    //!< Toggle button for play/pause
+  wxString m_playBtnTooltip;   //!< Tooltip text for play state
+  wxString m_pauseBtnTooltip;  //!< Tooltip text for pause state
+  wxString m_stopBtnTooltip;   //!< Tooltip text for stop state
 
-  wxSlider* m_speedSlider;
-  wxSlider* m_progressSlider;
-  wxStaticText* m_fileLabel;
-  wxStaticText* m_timeLabel;
-  wxStaticText* m_statusLabel;
-  vdr_pi* m_pvdr;
+  wxSlider* m_speedSlider;     //!< Slider control for playback speed
+  wxSlider* m_progressSlider;  //!< Slider control for playback position
+  wxStaticText* m_fileLabel;   //!< Label showing current filename
+  wxStaticText* m_timeLabel;   //!< Label showing current timestamp
+  wxStaticText* m_statusLabel; //!< Label showing info/error message
+  vdr_pi* m_pvdr;              //!< Owner plugin instance
 
-  bool m_isDragging;
-  bool m_wasPlayingBeforeDrag;
+  bool m_isDragging;            //!< Flag indicating progress slider drag
+  bool m_wasPlayingBeforeDrag;  //!< Playback state before drag started
 
   DECLARE_EVENT_TABLE()
 };
