@@ -184,6 +184,7 @@ public:
    */
   void CheckAutoRecording(double speed);
   bool HasValidTimestamps() const;
+  const wxString& GetFileStatus() const { return m_fileStatus; }
 
 private:
   class TimerHandler : public wxTimer {
@@ -318,6 +319,7 @@ private:
   int m_stop_delay;  // Minutes to wait before stopping.
   /** When speed first dropped below threshold. */
   wxDateTime m_below_threshold_since;
+  wxString m_fileStatus;
 
   wxEvtHandler* m_eventHandler;
   TimerHandler* m_timer;
@@ -359,6 +361,7 @@ private:
   wxSlider* m_progressSlider;
   wxStaticText* m_fileLabel;
   wxStaticText* m_timeLabel;
+  wxStaticText* m_statusLabel;
   vdr_pi* m_pvdr;
 
   bool m_isDragging;
