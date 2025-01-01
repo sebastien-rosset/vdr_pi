@@ -34,6 +34,7 @@
 
 #include "wx/tokenzr.h"
 #include "wx/statline.h"
+#include "wx/display.h"
 
 #include <map>
 #include <typeinfo>
@@ -1558,14 +1559,19 @@ void VDRControl::CreateControls() {
   // Main vertical sizer
   wxBoxSizer* mainSizer = new wxBoxSizer(wxVERTICAL);
 
-  wxSize buttonDimension(32, 32);
+  wxFont* buttonFont = GetOCPNScaledFont_PlugIn("Dialog", 14);
+  // Calculate button dimensions based on font height
+  int fontHeight = buttonFont->GetPointSize();
+  int buttonSize = fontHeight * 1.5;  // Adjust multiplier as needed
+  // Ensure minimum size of 32 pixels for touch usability
+  buttonSize = std::max(buttonSize, 32);
+  wxSize buttonDimension(buttonSize, buttonSize);
+
   // File information section
   wxBoxSizer* fileSizer = new wxBoxSizer(wxHORIZONTAL);
   m_loadBtn = new wxButton(this, ID_VDR_LOAD, wxString::FromUTF8("📂"),
                            wxDefaultPosition, buttonDimension, wxBU_EXACTFIT);
-  wxFont buttonFont = m_loadBtn->GetFont();
-  buttonFont.SetPointSize(static_cast<int>(buttonFont.GetPointSize() * 1.3));
-  m_loadBtn->SetFont(buttonFont);
+  m_loadBtn->SetFont(*buttonFont);
   m_loadBtn->SetMinSize(buttonDimension);
   m_loadBtn->SetMaxSize(buttonDimension);
   m_loadBtn->SetToolTip(_("Load VDR File"));
@@ -1588,9 +1594,9 @@ void VDRControl::CreateControls() {
   m_playPauseBtn =
       new wxButton(this, ID_VDR_PLAY_PAUSE, wxString::FromUTF8("▶"),
                    wxDefaultPosition, buttonDimension, wxBU_EXACTFIT);
+  m_playPauseBtn->SetFont(*buttonFont);
   m_playPauseBtn->SetMinSize(buttonDimension);
   m_playPauseBtn->SetMaxSize(buttonDimension);
-  m_playPauseBtn->SetFont(buttonFont);
   m_playPauseBtn->SetToolTip(m_playBtnTooltip);
   controlSizer->Add(m_playPauseBtn, 0, wxALL, 3);
 
