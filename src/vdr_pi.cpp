@@ -93,6 +93,8 @@ vdr_pi::vdr_pi(void* ppimgr) : opencpn_plugin_118(ppimgr) {
   m_recording_paused = false;
   m_is_csv_file = false;
   m_last_speed = 0.0;
+  m_sentence_buffer.clear();
+  m_messages_dropped = false;
 }
 
 int vdr_pi::Init(void) {
@@ -606,87 +608,120 @@ wxString vdr_pi::ParseCSVLineTimestamp(const wxString& line,
   return fields[m_message_idx];
 }
 
+void vdr_pi::FlushSentenceBuffer() {
+  for (const auto& sentence : m_sentence_buffer) {
+    PushNMEABuffer(sentence + "\r\n");
+  }
+  m_sentence_buffer.clear();
+}
+
 void vdr_pi::Notify() {
   if (!m_istream.IsOpened()) return;
 
-  wxString line;
-  int pos = m_istream.GetCurrentLine();
+  wxDateTime now = wxDateTime::UNow();
+  wxDateTime targetTime;
+  bool behindSchedule = true;
 
-  if (m_istream.Eof() || pos == -1) {
-    // First line - check if it's CSV.
-    line = GetNextNonEmptyLine(true);
-    m_is_csv_file = ParseCSVHeader(line);
-    if (m_is_csv_file) {
-      // Get first data line.
-      line = GetNextNonEmptyLine();
-      m_playback_base_time = m_firstTimestamp;
-    }
-  } else {
-    line = GetNextNonEmptyLine();
-  }
+  // Keep processing messages until we catch up with scheduled time.
+  while (behindSchedule && !m_istream.Eof()) {
+    wxString line;
+    int pos = m_istream.GetCurrentLine();
 
-  if (m_istream.Eof() && line.IsEmpty()) {
-    m_atFileEnd = true;
-    PausePlayback();
-    if (m_pvdrcontrol) {
-      m_pvdrcontrol->UpdateControls();
-    }
-    return;
-  }
-
-  // Parse the line according to detected format (CSV or raw NMEA/AIS).
-  if (m_is_csv_file) {
-    wxDateTime timestamp;
-    wxString nmea = ParseCSVLineTimestamp(line, &timestamp);
-    if (!nmea.IsEmpty()) {
-      m_currentTimestamp = timestamp;
-      ScheduleNextPlayback();
-      PushNMEABuffer(nmea + "\r\n");
-    }
-  } else {
-    // Raw NMEA/AIS sentences.
-    if (!line.IsEmpty()) {
-      // Try to parse timestamp from NMEA sentence.
-      wxDateTime timestamp;
-      if (ParseNMEATimestamp(line, &timestamp)) {
-        m_currentTimestamp = timestamp;
-        ScheduleNextPlayback();
-      } else {
-        m_timer->Start(1, wxTIMER_ONE_SHOT);
+    if (m_istream.Eof() || pos == -1) {
+      // First line - check if it's CSV.
+      line = GetNextNonEmptyLine(true);
+      m_is_csv_file = ParseCSVHeader(line);
+      if (m_is_csv_file) {
+        // Get first data line.
+        line = GetNextNonEmptyLine();
+        m_playback_base_time = m_firstTimestamp;
       }
-      PushNMEABuffer(line + "\r\n");
+    } else {
+      line = GetNextNonEmptyLine();
+    }
+
+    if (m_istream.Eof() && line.IsEmpty()) {
+      m_atFileEnd = true;
+      PausePlayback();
+      if (m_pvdrcontrol) {
+        m_pvdrcontrol->UpdateControls();
+      }
+      return;
+    }
+
+    // Parse the line according to detected format (CSV or raw NMEA/AIS).
+    wxDateTime timestamp;
+    wxString nmea;
+    bool hasTimestamp = false;
+
+    if (m_is_csv_file) {
+      nmea = ParseCSVLineTimestamp(line, &timestamp);
+      if (!nmea.IsEmpty()) {
+        nmea += "\r\n";
+        hasTimestamp = true;
+      }
+    } else {
+      nmea = line + "\r\n";
+      hasTimestamp = ParseNMEATimestamp(line, &timestamp);
+    }
+    if (!nmea.IsEmpty()) {
+      if (hasTimestamp) {
+        m_currentTimestamp = timestamp;
+        targetTime = GetNextPlaybackTime();
+
+        // Check if we've caught up to schedule
+        if (targetTime.IsValid() && targetTime > now) {
+          behindSchedule = false;
+          // Before scheduling next update, flush our sentence buffer
+          FlushSentenceBuffer();
+          // Schedule next notification
+          wxTimeSpan waitTime = targetTime - now;
+          m_timer->Start(
+              static_cast<int>(waitTime.GetMilliseconds().ToDouble()),
+              wxTIMER_ONE_SHOT);
+        }
+      }
+      // Add sentence to buffer, maintaining max size.
+      m_sentence_buffer.push_back(nmea);
+      if (m_sentence_buffer.size() > MAX_MSG_BUFFER_SIZE) {
+        if (!m_messages_dropped) {
+          double speedMultiplier =
+              m_pvdrcontrol ? m_pvdrcontrol->GetSpeedMultiplier() : 1.0;
+          wxLogMessage(
+              "Playback dropping messages to maintain timing at %.0fx speed",
+              speedMultiplier);
+          m_messages_dropped = true;
+        }
+        m_sentence_buffer.pop_front();
+      }
+    }
+    // If we're still behind or have no timestamps, schedule immediate next
+    // message
+    if (behindSchedule) {
+      m_timer->Start(1, wxTIMER_ONE_SHOT);
     }
   }
-
-  // Update progress regardless of file type.
+  // Update progress regardless of file type
   if (m_pvdrcontrol) {
     m_pvdrcontrol->SetProgress(GetProgressFraction());
   }
 }
 
-void vdr_pi::ScheduleNextPlayback() {
-  double speedMultiplier = 1.0;
-  if (m_pvdrcontrol) {
-    speedMultiplier = m_pvdrcontrol->GetSpeedMultiplier();
+wxDateTime vdr_pi::GetNextPlaybackTime() const {
+  if (!m_currentTimestamp.IsValid() || !m_firstTimestamp.IsValid() ||
+      !m_playback_base_time.IsValid()) {
+    return wxDateTime();  // Return invalid time if we don't have valid
+                          // timestamps
   }
+  double speedMultiplier =
+      m_pvdrcontrol ? m_pvdrcontrol->GetSpeedMultiplier() : 1.0;
   // Calculate when this message should be played relative to playback start.
   wxTimeSpan elapsedTime = m_currentTimestamp - m_firstTimestamp;
   wxLongLong ms = elapsedTime.GetMilliseconds();
   double scaledMs = ms.ToDouble() / speedMultiplier;
   wxTimeSpan scaledElapsed =
       wxTimeSpan::Milliseconds(static_cast<long>(scaledMs));
-  wxDateTime targetTime = m_playback_base_time + scaledElapsed;
-
-  // Calculate how long to wait
-  wxDateTime now = wxDateTime::UNow();
-  if (targetTime > now) {
-    wxTimeSpan waitTime = targetTime - now;
-    m_timer->Start(static_cast<int>(waitTime.GetMilliseconds().ToDouble()),
-                   wxTIMER_ONE_SHOT);
-  } else {
-    // We're behind schedule, play immediately
-    m_timer->Start(1, wxTIMER_ONE_SHOT);
-  }
+  return m_playback_base_time + scaledElapsed;
 }
 
 int vdr_pi::GetToolbarToolCount(void) { return 2; }
@@ -970,6 +1005,7 @@ void vdr_pi::StartPlayback() {
       return;
     }
   }
+  m_messages_dropped = false;
   m_playing = true;
 
   if (m_pvdrcontrol) {
@@ -1575,7 +1611,7 @@ void VDRControl::CreateControls() {
   speedSizer->Add(new wxStaticText(this, wxID_ANY, _("Speed:")), 0,
                   wxALIGN_CENTER_VERTICAL | wxRIGHT, 3);
   m_speedSlider =
-      new wxSlider(this, wxID_ANY, 1, 1, 100, wxDefaultPosition, wxDefaultSize,
+      new wxSlider(this, wxID_ANY, 1, 1, 1000, wxDefaultPosition, wxDefaultSize,
                    wxSL_HORIZONTAL | wxSL_VALUE_LABEL);
   speedSizer->Add(m_speedSlider, 1, wxEXPAND | wxALIGN_CENTER_VERTICAL, 0);
   mainSizer->Add(speedSizer, 0, wxEXPAND | wxALL, 4);
