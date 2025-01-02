@@ -614,7 +614,11 @@ private:
   /** Handle data format selection changes. */
   void OnDataFormatRadioButton(wxCommandEvent& event);
 
+  /** Handle left-click on Settings button. */
+  void OnSettingsButton(wxCommandEvent& event);
+
   wxButton* m_loadBtn;         //!< Button to load VDR file
+  wxButton* m_settingsBtn;     //!< Button to open settings dialog
   wxButton* m_playPauseBtn;    //!< Toggle button for play/pause
   wxString m_playBtnTooltip;   //!< Tooltip text for play state
   wxString m_pauseBtnTooltip;  //!< Tooltip text for pause state

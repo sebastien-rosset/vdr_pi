@@ -1512,7 +1512,8 @@ enum {
   ID_VDR_PLAY_PAUSE,
   ID_VDR_DATA_FORMAT_RADIOBUTTON,
   ID_VDR_SPEED_SLIDER,
-  ID_VDR_PROGRESS
+  ID_VDR_PROGRESS,
+  ID_VDR_SETTINGS
 };
 
 BEGIN_EVENT_TABLE(VDRControl, wxWindow)
@@ -1520,6 +1521,7 @@ EVT_BUTTON(ID_VDR_LOAD, VDRControl::OnLoadButton)
 EVT_RADIOBUTTON(ID_VDR_DATA_FORMAT_RADIOBUTTON,
                 VDRControl::OnDataFormatRadioButton)
 EVT_BUTTON(ID_VDR_PLAY_PAUSE, VDRControl::OnPlayPauseButton)
+EVT_BUTTON(ID_VDR_SETTINGS, VDRControl::OnSettingsButton)
 EVT_SLIDER(ID_VDR_SPEED_SLIDER, VDRControl::OnSpeedSliderUpdated)
 EVT_COMMAND_SCROLL_THUMBTRACK(ID_VDR_PROGRESS,
                               VDRControl::OnProgressSliderUpdated)
@@ -1569,6 +1571,18 @@ void VDRControl::CreateControls() {
 
   // File information section
   wxBoxSizer* fileSizer = new wxBoxSizer(wxHORIZONTAL);
+
+  // Settings button
+  m_settingsBtn =
+      new wxButton(this, ID_VDR_SETTINGS, wxString::FromUTF8("⚙️"),
+                   wxDefaultPosition, buttonDimension, wxBU_EXACTFIT);
+  m_settingsBtn->SetFont(*buttonFont);
+  m_settingsBtn->SetMinSize(buttonDimension);
+  m_settingsBtn->SetMaxSize(buttonDimension);
+  m_settingsBtn->SetToolTip(_("Settings"));
+  fileSizer->Add(m_settingsBtn, 0, wxALL, 2);
+
+  // Load button
   m_loadBtn = new wxButton(this, ID_VDR_LOAD, wxString::FromUTF8("📂"),
                            wxDefaultPosition, buttonDimension, wxBU_EXACTFIT);
   m_loadBtn->SetFont(*buttonFont);
@@ -1581,6 +1595,7 @@ void VDRControl::CreateControls() {
       new wxStaticText(this, wxID_ANY, _("No file loaded"), wxDefaultPosition,
                        wxDefaultSize, wxST_ELLIPSIZE_START);
   fileSizer->Add(m_fileLabel, 1, wxALL | wxALIGN_CENTER_VERTICAL, 2);
+
   mainSizer->Add(fileSizer, 0, wxALL, 4);
 
   // Play controls and progress in one row
@@ -1768,6 +1783,7 @@ void VDRControl::UpdateControls() {
   // Enable/disable controls based on state
   m_loadBtn->Enable(!isRecording && !isPlaying);
   m_playPauseBtn->Enable(hasFile && !isRecording);
+  m_settingsBtn->Enable(!isPlaying && !isRecording);
   m_progressSlider->Enable(hasFile && !isRecording);
 
   // Update toolbar state
@@ -1821,6 +1837,11 @@ void VDRControl::OnPlayPauseButton(wxCommandEvent& event) {
 void VDRControl::OnDataFormatRadioButton(wxCommandEvent& event) {
   // Radio button state is tracked by wx, we just need to handle any
   // format-specific UI updates here if needed in the future
+}
+
+void VDRControl::OnSettingsButton(wxCommandEvent& event) {
+  m_pvdr->ShowPreferencesDialog(this);
+  event.Skip();
 }
 
 void VDRControl::OnSpeedSliderUpdated(wxCommandEvent& event) {
