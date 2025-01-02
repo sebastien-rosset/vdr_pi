@@ -1559,10 +1559,13 @@ void VDRControl::CreateControls() {
   // Main vertical sizer
   wxBoxSizer* mainSizer = new wxBoxSizer(wxVERTICAL);
 
-  wxFont* buttonFont = GetOCPNScaledFont_PlugIn("Dialog", 14);
+  wxFont* baseFont = GetOCPNScaledFont_PlugIn("Dialog", 0);
+  wxFont* buttonFont = FindOrCreateFont_PlugIn(
+      baseFont->GetPointSize() * GetContentScaleFactor(), baseFont->GetFamily(),
+      baseFont->GetStyle(), baseFont->GetWeight());
   // Calculate button dimensions based on font height
   int fontHeight = buttonFont->GetPointSize();
-  int buttonSize = fontHeight * 1.5;  // Adjust multiplier as needed
+  int buttonSize = fontHeight * 1.2;  // Adjust multiplier as needed
   // Ensure minimum size of 32 pixels for touch usability
   buttonSize = std::max(buttonSize, 32);
   wxSize buttonDimension(buttonSize, buttonSize);
