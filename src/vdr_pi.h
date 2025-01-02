@@ -29,6 +29,8 @@
 #ifndef _VDRPI_H_
 #define _VDRPI_H_
 
+#include <deque>
+
 #include "wx/wxprec.h"
 
 #ifndef WX_PRECOMP
@@ -183,8 +185,8 @@ public:
   /** Return whether the end of the playback file has been reached. */
   bool IsAtFileEnd() const { return m_atFileEnd; }
   void ResetEndOfFile() { m_atFileEnd = false; }
-  /** Schedule the next playback message based on the message timestamp. */
-  void ScheduleNextPlayback();
+  /** Return the next playback message based on the message timestamp. */
+  wxDateTime GetNextPlaybackTime() const;
 
   /** Invoked during playback. */
   void OnTimer(wxTimerEvent& event);
@@ -367,6 +369,9 @@ private:
   /** Process incoming SignalK message from OpenCPN. */
   void OnSignalKEvent(wxCommandEvent& ev);
 
+  /** Helper to flush the sentence buffer to NMEA stream. */
+  void FlushSentenceBuffer();
+
   /**
    * Get the next non-empty line from the input stream. Empty lines are skipped.
    * A line is considered empty if it contains only whitespace.
@@ -498,6 +503,21 @@ private:
   wxDateTime m_below_threshold_since;
   wxString m_fileStatus;
 
+  /**
+   * Maximum number of NMEA sentences to retain until messages are dropped
+   * to maintain playback timing.
+   */
+  static const int MAX_MSG_BUFFER_SIZE = 1000;
+  /**
+   * Circular buffer for sentences.
+   * Used to store incoming NMEA sentences for playback, especially
+   * at high speeds where sentences may arrive faster than they can be played.
+   * At high replay speeds, some sentences may be skipped to maintain timing.
+   */
+  std::deque<wxString> m_sentence_buffer;
+  /** Flag indicating if messages have been dropped from the buffer. */
+  bool m_messages_dropped;
+
   wxEvtHandler* m_eventHandler;
   TimerHandler* m_timer;
 
@@ -600,12 +620,12 @@ private:
   wxString m_pauseBtnTooltip;  //!< Tooltip text for pause state
   wxString m_stopBtnTooltip;   //!< Tooltip text for stop state
 
-  wxSlider* m_speedSlider;     //!< Slider control for playback speed
-  wxSlider* m_progressSlider;  //!< Slider control for playback position
-  wxStaticText* m_fileLabel;   //!< Label showing current filename
-  wxStaticText* m_timeLabel;   //!< Label showing current timestamp
-  wxStaticText* m_statusLabel; //!< Label showing info/error message
-  vdr_pi* m_pvdr;              //!< Owner plugin instance
+  wxSlider* m_speedSlider;      //!< Slider control for playback speed
+  wxSlider* m_progressSlider;   //!< Slider control for playback position
+  wxStaticText* m_fileLabel;    //!< Label showing current filename
+  wxStaticText* m_timeLabel;    //!< Label showing current timestamp
+  wxStaticText* m_statusLabel;  //!< Label showing info/error message
+  vdr_pi* m_pvdr;               //!< Owner plugin instance
 
   bool m_isDragging;            //!< Flag indicating progress slider drag
   bool m_wasPlayingBeforeDrag;  //!< Playback state before drag started
