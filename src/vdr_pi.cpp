@@ -1635,9 +1635,13 @@ void VDRControl::CreateControls() {
   speedSizer->Add(new wxStaticText(this, wxID_ANY, _("Speed:")), 0,
                   wxALIGN_CENTER_VERTICAL | wxRIGHT, 3);
   m_speedSlider =
-      new wxSlider(this, wxID_ANY, 1, 1, 1000, wxDefaultPosition, wxDefaultSize,
-                   wxSL_HORIZONTAL | wxSL_VALUE_LABEL);
+      new wxSlider(this, ID_VDR_SPEED_SLIDER, 0, 0, MAX_REPLAY_SPEED,
+                   wxDefaultPosition, wxDefaultSize, wxSL_HORIZONTAL);
+  m_speedLabel =
+      new wxStaticText(this, wxID_ANY, "1", wxDefaultPosition, wxSize(60, -1),
+                       wxALIGN_RIGHT | wxST_NO_AUTORESIZE);
   speedSizer->Add(m_speedSlider, 1, wxEXPAND | wxALIGN_CENTER_VERTICAL, 0);
+  speedSizer->Add(m_speedLabel, 0, wxALIGN_CENTER_VERTICAL | wxLEFT, 5);
   mainSizer->Add(speedSizer, 0, wxEXPAND | wxALL, 4);
 
   // Status label (info/error messages).
@@ -1760,6 +1764,32 @@ void VDRControl::OnProgressSliderEndDrag(wxScrollEvent& event) {
   event.Skip();
 }
 
+// Convert slider value (0-MAX_REPLAY_SPEED) to speed multiplier (1x to
+// MAX_REPLAY_SPEED)
+double VDRControl::TransformSliderToSpeed(int sliderValue) const {
+  return pow(10.0, sliderValue * 3.0 / MAX_REPLAY_SPEED);
+}
+
+// Inverse of TransformSliderToSpeed
+int VDRControl::TransformSpeedToSlider(double speed) const {
+  return static_cast<int>(log10(speed) * MAX_REPLAY_SPEED / 3.0);
+}
+
+wxString VDRControl::FormatSpeedLabel(double speed) const {
+  // Format speed as "×1", "×10", "×100", etc.
+  if (speed >= 100) {
+    return wxString::Format("×%.0f", speed);
+  } else if (speed >= 10) {
+    return wxString::Format("×%.1f", speed);
+  } else {
+    return wxString::Format("×%.2f", speed);
+  }
+}
+
+double VDRControl::GetSpeedMultiplier() const {
+  return TransformSliderToSpeed(m_speedSlider->GetValue());
+}
+
 void vdr_pi::SetToolbarToolStatus(int id, bool status) {
   if (id == m_tb_item_id_play || id == m_tb_item_id_record) {
     SetToolbarItemState(id, status);
@@ -1848,9 +1878,15 @@ void VDRControl::OnSettingsButton(wxCommandEvent& event) {
 }
 
 void VDRControl::OnSpeedSliderUpdated(wxCommandEvent& event) {
+  // Update the speed label
+  double speed = TransformSliderToSpeed(m_speedSlider->GetValue());
+  m_speedLabel->SetLabel(FormatSpeedLabel(speed));
+
+  // Adjust playback timing if playing
   if (m_pvdr->IsPlaying()) {
     m_pvdr->AdjustPlaybackBaseTime();
   }
+  event.Skip();
 }
 
 void VDRControl::SetProgress(double fraction) {

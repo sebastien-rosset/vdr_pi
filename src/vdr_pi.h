@@ -570,7 +570,7 @@ public:
   void UpdateTimeLabel();
 
   /** Get current playback speed multiplier setting. */
-  double GetSpeedMultiplier() const { return m_speedSlider->GetValue(); }
+  double GetSpeedMultiplier() const;
 
 private:
   /** Create and layout UI controls. */
@@ -617,6 +617,21 @@ private:
   /** Handle left-click on Settings button. */
   void OnSettingsButton(wxCommandEvent& event);
 
+  /**
+   * Transform slider position into replay speed.
+   *
+   * The slider uses a log scale to provide a wide range of speed values.
+   */
+  double TransformSliderToSpeed(int sliderValue) const;
+  /**
+   * Transform replay speed into slider position.
+   */
+  int TransformSpeedToSlider(double speed) const;
+  /**
+   * Format replay speed for display.
+   */
+  wxString FormatSpeedLabel(double speed) const;
+
   wxButton* m_loadBtn;         //!< Button to load VDR file
   wxButton* m_settingsBtn;     //!< Button to open settings dialog
   wxButton* m_playPauseBtn;    //!< Toggle button for play/pause
@@ -624,12 +639,16 @@ private:
   wxString m_pauseBtnTooltip;  //!< Tooltip text for pause state
   wxString m_stopBtnTooltip;   //!< Tooltip text for stop state
 
+  wxStaticText* m_speedLabel;   //!< Label with playback speed
   wxSlider* m_speedSlider;      //!< Slider control for playback speed
   wxSlider* m_progressSlider;   //!< Slider control for playback position
   wxStaticText* m_fileLabel;    //!< Label showing current filename
   wxStaticText* m_timeLabel;    //!< Label showing current timestamp
   wxStaticText* m_statusLabel;  //!< Label showing info/error message
   vdr_pi* m_pvdr;               //!< Owner plugin instance
+
+  /** The maximum allowed replay speed */
+  static const int MAX_REPLAY_SPEED = 1000;
 
   bool m_isDragging;            //!< Flag indicating progress slider drag
   bool m_wasPlayingBeforeDrag;  //!< Playback state before drag started
