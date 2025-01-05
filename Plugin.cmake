@@ -31,7 +31,7 @@ option(VDR_USE_SVG "Use SVG graphics" ON)
 # -------  Plugin setup --------
 #
 set(PKG_NAME vdr_pi)
-set(PKG_VERSION  1.3.36.0)
+set(PKG_VERSION  1.3.44.0)
 set(PKG_PRERELEASE "")  # Empty, or a tag like 'beta'
 
 set(DISPLAY_NAME VDR)    # Dialogs, installer artifacts, ...
@@ -52,10 +52,12 @@ set(SRC
   src/icons.cpp
   src/vdr_pi.h
   src/vdr_pi.cpp
+  src/vdr_pi_prefs.h
+  src/vdr_pi_prefs.cpp
 )
 
 
-set(PKG_API_LIB api-17)  #  A directory in libs/ e. g., api-17 or api-16
+set(PKG_API_LIB api-18)  #  A directory in libs/ e. g., api-18 or api-19
 
 macro(late_init)
   # Perform initialization after the PACKAGE_NAME library, compilers
