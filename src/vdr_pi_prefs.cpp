@@ -212,11 +212,17 @@ void VDRPrefsDialog::CreateControls() {
 
   mainSizer->Add(autoSizer, 0, wxEXPAND | wxALL, 5);
 
+#if 0
   // Standard dialog buttons
   wxStdDialogButtonSizer* buttonSizer = new wxStdDialogButtonSizer();
   buttonSizer->AddButton(new wxButton(this, wxID_OK));
   buttonSizer->AddButton(new wxButton(this, wxID_CANCEL));
   buttonSizer->Realize();
+#else
+  wxBoxSizer* buttonSizer = new wxBoxSizer(wxHORIZONTAL);
+  buttonSizer->Add(new wxButton(this, wxID_OK, _("OK")), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 5);
+  buttonSizer->Add(new wxButton(this, wxID_CANCEL, _("Cancel")), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 5);
+#endif
 
   mainSizer->Add(buttonSizer, 0, wxEXPAND | wxALL, 5);
 
