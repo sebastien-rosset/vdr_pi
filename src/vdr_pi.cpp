@@ -1086,9 +1086,9 @@ void vdr_pi::ShowPreferencesDialog(wxWindow* parent) {
     int ymax = parent->GetParent()
                    ->GetSize()
                    .GetHeight();  // This would be the Options dialog itself
-    dlg->SetSize(xmax, ymax);
-    dlg->Layout();
-    dlg->Move(0, 0);
+    dlg.SetSize(xmax, ymax);
+    dlg.Layout();
+    dlg.Move(0, 0);
   }
 #endif
 
