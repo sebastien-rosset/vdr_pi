@@ -756,13 +756,22 @@ void vdr_pi::OnToolbarToolCallback(int id) {
     }
 
     if (!m_pvdrcontrol) {
+
+      wxPoint dialog_position = wxPoint(100, 100);
+      //  Dialog will be fixed position on Android, so position carefully
+#ifdef __OCPN__ANDROID__
+      wxRect tbRect = GetMasterToolbarRect();
+      dialog_position.y = 0;
+      dialog_position.x = tbRect.x + tbRect.width + 2;
+#endif
+
       m_pvdrcontrol = new VDRControl(GetOCPNCanvasWindow(), wxID_ANY, this);
       wxAuiPaneInfo pane = wxAuiPaneInfo()
                                .Name(_T("VDR"))
                                .Caption(_("Voyage Data Recorder"))
                                .CaptionVisible(true)
                                .Float()
-                               .FloatingPosition(100, 100)
+                               .FloatingPosition(dialog_position)
                                .Dockable(false)
                                .Fixed()
                                .CloseButton(true)
