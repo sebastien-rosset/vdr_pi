@@ -1080,7 +1080,17 @@ void vdr_pi::ShowPreferencesDialog(wxWindow* parent) {
                      m_log_rotate, m_log_rotate_interval,
                      m_auto_start_recording, m_use_speed_threshold,
                      m_speed_threshold, m_stop_delay, m_protocols);
-  dlg.Fit();
+#ifdef __WXQT__     // Android
+  if (parent) {
+    int xmax = parent->GetSize().GetWidth();
+    int ymax = parent->GetParent()
+                   ->GetSize()
+                   .GetHeight();  // This would be the Options dialog itself
+    dialog->SetSize(xmax, ymax);
+    dialog->Layout();
+    dialog->Move(0, 0);
+  }
+#endif
 
   if (dlg.ShowModal() == wxID_OK) {
     bool previousNMEA2000State = m_protocols.nmea2000;

@@ -199,7 +199,6 @@ void VDRPrefsDialog::CreateControls() {
                   wxALIGN_CENTER_VERTICAL);
   autoSizer->Add(speedSizer, 0, wxLEFT | wxRIGHT | wxBOTTOM, 5);
 
-#if 0
   // Pause delay control
   wxBoxSizer* delaySizer = new wxBoxSizer(wxHORIZONTAL);
   delaySizer->Add(new wxStaticText(this, wxID_ANY, _("Pause recording after")),
@@ -212,10 +211,9 @@ void VDRPrefsDialog::CreateControls() {
       new wxStaticText(this, wxID_ANY, _("minutes below speed threshold")), 0,
       wxALIGN_CENTER_VERTICAL);
   autoSizer->Add(delaySizer, 0, wxLEFT | wxRIGHT | wxBOTTOM, 5);
-#endif
   mainSizer->Add(autoSizer, 0, wxEXPAND | wxALL, 5);
 
-#if 0
+#if 1
   // Standard dialog buttons
   wxStdDialogButtonSizer* buttonSizer = new wxStdDialogButtonSizer();
   buttonSizer->AddButton(new wxButton(this, wxID_OK));
