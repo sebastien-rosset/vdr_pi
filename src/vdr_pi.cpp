@@ -759,7 +759,7 @@ void vdr_pi::OnToolbarToolCallback(int id) {
 
       wxPoint dialog_position = wxPoint(100, 100);
       //  Dialog will be fixed position on Android, so position carefully
-#ifdef __OCPN__ANDROID__
+#ifdef __WXQT__       // a surrogate for Android
       wxRect tbRect = GetMasterToolbarRect();
       dialog_position.y = 0;
       dialog_position.x = tbRect.x + tbRect.width + 2;
@@ -1081,7 +1081,7 @@ void vdr_pi::ShowPreferencesDialog(wxWindow* parent) {
                      m_auto_start_recording, m_use_speed_threshold,
                      m_speed_threshold, m_stop_delay, m_protocols);
   dlg.Fit();
-  
+
   if (dlg.ShowModal() == wxID_OK) {
     bool previousNMEA2000State = m_protocols.nmea2000;
     bool previousSignalKState = m_protocols.signalK;
