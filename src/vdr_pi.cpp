@@ -1585,7 +1585,7 @@ void VDRControl::CreateControls() {
 #ifdef __WXQT__
   // A simple way to get touch-compatible tool size
   wxRect tbRect = GetMasterToolbarRect();
-  buttonSize = std::max(buttonSize, tbRect.width / 3);
+  buttonSize = std::max(buttonSize, tbRect.width / 2);
 #endif
 
 
