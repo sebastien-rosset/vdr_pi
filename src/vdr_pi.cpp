@@ -1587,11 +1587,6 @@ void VDRControl::CreateControls() {
   wxRect tbRect = GetMasterToolbarRect();
   buttonSize = std::max(buttonSize, tbRect.width / 2);
 #endif
-
-
-
-
-
   wxSize buttonDimension(buttonSize, buttonSize);
 
   // File information section
