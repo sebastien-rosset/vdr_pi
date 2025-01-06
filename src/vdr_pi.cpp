@@ -1573,6 +1573,7 @@ void VDRControl::CreateControls() {
   wxBoxSizer* mainSizer = new wxBoxSizer(wxVERTICAL);
 
   wxFont* baseFont = GetOCPNScaledFont_PlugIn("Dialog", 0);
+  SetFont(*baseFont);
   wxFont* buttonFont = FindOrCreateFont_PlugIn(
       baseFont->GetPointSize() * GetContentScaleFactor(), baseFont->GetFamily(),
       baseFont->GetStyle(), baseFont->GetWeight());
