@@ -62,7 +62,8 @@ VDRPrefsDialog::VDRPrefsDialog(wxWindow* parent, wxWindowID id,
       m_stop_delay(stopDelay),
       m_protocols(protocols) {
   CreateControls();
-  GetSizer()->Fit(this);
+  //GetSizer()->Fit(this);
+  Fit();
   GetSizer()->SetSizeHints(this);
   Centre();
 }
@@ -222,6 +223,7 @@ void VDRPrefsDialog::CreateControls() {
   buttonSizer->Realize();
 
   mainSizer->Add(buttonSizer, 0, wxEXPAND | wxALL, 5);
+
 }
 
 void VDRPrefsDialog::OnOK(wxCommandEvent& event) {
