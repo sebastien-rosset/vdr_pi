@@ -61,9 +61,11 @@ VDRPrefsDialog::VDRPrefsDialog(wxWindow* parent, wxWindowID id,
       m_speed_threshold(speedThreshold),
       m_stop_delay(stopDelay),
       m_protocols(protocols) {
+  SetSizeHints(wxSize(-1, -1), wxSize(-1, -1));
+
   CreateControls();
   GetSizer()->Fit(this);
-  GetSizer()->SetSizeHints(this);
+  //GetSizer()->SetSizeHints(this);
   Centre();
 }
 
