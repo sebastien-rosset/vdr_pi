@@ -1080,6 +1080,8 @@ void vdr_pi::ShowPreferencesDialog(wxWindow* parent) {
                      m_log_rotate, m_log_rotate_interval,
                      m_auto_start_recording, m_use_speed_threshold,
                      m_speed_threshold, m_stop_delay, m_protocols);
+  dlg.Fit();
+  
   if (dlg.ShowModal() == wxID_OK) {
     bool previousNMEA2000State = m_protocols.nmea2000;
     bool previousSignalKState = m_protocols.signalK;
