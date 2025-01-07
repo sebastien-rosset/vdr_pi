@@ -193,6 +193,7 @@ public:
 
   /** Show the plugin preferences dialog. */
   void ShowPreferencesDialog(wxWindow* parent);
+  void ShowPreferencesDialogNative(wxWindow* parent);
   /** Get current data format setting for VDR output */
   VDRDataFormat GetDataFormat() const { return m_data_format; }
   /**

@@ -756,13 +756,22 @@ void vdr_pi::OnToolbarToolCallback(int id) {
     }
 
     if (!m_pvdrcontrol) {
+
+      wxPoint dialog_position = wxPoint(100, 100);
+      //  Dialog will be fixed position on Android, so position carefully
+#ifdef __WXQT__       // a surrogate for Android
+      wxRect tbRect = GetMasterToolbarRect();
+      dialog_position.y = 0;
+      dialog_position.x = tbRect.x + tbRect.width + 2;
+#endif
+
       m_pvdrcontrol = new VDRControl(GetOCPNCanvasWindow(), wxID_ANY, this);
       wxAuiPaneInfo pane = wxAuiPaneInfo()
                                .Name(_T("VDR"))
                                .Caption(_("Voyage Data Recorder"))
                                .CaptionVisible(true)
                                .Float()
-                               .FloatingPosition(100, 100)
+                               .FloatingPosition(dialog_position)
                                .Dockable(false)
                                .Fixed()
                                .CloseButton(true)
@@ -1071,6 +1080,53 @@ void vdr_pi::ShowPreferencesDialog(wxWindow* parent) {
                      m_log_rotate, m_log_rotate_interval,
                      m_auto_start_recording, m_use_speed_threshold,
                      m_speed_threshold, m_stop_delay, m_protocols);
+#ifdef __WXQT__     // Android
+  if (parent) {
+    int xmax = parent->GetSize().GetWidth();
+    int ymax = parent->GetParent()
+                   ->GetSize()
+                   .GetHeight();  // This would be the Options dialog itself
+    dlg.SetSize(xmax, ymax);
+    dlg.Layout();
+    dlg.Move(0, 0);
+  }
+#endif
+
+  if (dlg.ShowModal() == wxID_OK) {
+    bool previousNMEA2000State = m_protocols.nmea2000;
+    bool previousSignalKState = m_protocols.signalK;
+    SetDataFormat(dlg.GetDataFormat());
+    SetRecordingDir(dlg.GetRecordingDir());
+    SetLogRotate(dlg.GetLogRotate());
+    SetLogRotateInterval(dlg.GetLogRotateInterval());
+    SetAutoStartRecording(dlg.GetAutoStartRecording());
+    SetUseSpeedThreshold(dlg.GetUseSpeedThreshold());
+    SetSpeedThreshold(dlg.GetSpeedThreshold());
+    SetStopDelay(dlg.GetStopDelay());
+    m_protocols = dlg.GetProtocolSettings();
+    SaveConfig();
+
+    // Update NMEA 2000 listeners if the setting changed
+    if (previousNMEA2000State != m_protocols.nmea2000) {
+      UpdateNMEA2000Listeners();
+    }
+    if (previousSignalKState != m_protocols.signalK) {
+      UpdateSignalKListeners();
+    }
+
+    // Update UI if needed
+    if (m_pvdrcontrol) {
+      m_pvdrcontrol->UpdateControls();
+    }
+  }
+}
+
+void vdr_pi::ShowPreferencesDialogNative(wxWindow* parent) {
+  VDRPrefsDialog dlg(parent, wxID_ANY, m_data_format, m_recording_dir,
+                     m_log_rotate, m_log_rotate_interval,
+                     m_auto_start_recording, m_use_speed_threshold,
+                     m_speed_threshold, m_stop_delay, m_protocols);
+
   if (dlg.ShowModal() == wxID_OK) {
     bool previousNMEA2000State = m_protocols.nmea2000;
     bool previousSignalKState = m_protocols.signalK;
@@ -1562,6 +1618,7 @@ void VDRControl::CreateControls() {
   wxBoxSizer* mainSizer = new wxBoxSizer(wxVERTICAL);
 
   wxFont* baseFont = GetOCPNScaledFont_PlugIn("Dialog", 0);
+  SetFont(*baseFont);
   wxFont* buttonFont = FindOrCreateFont_PlugIn(
       baseFont->GetPointSize() * GetContentScaleFactor(), baseFont->GetFamily(),
       baseFont->GetStyle(), baseFont->GetWeight());
@@ -1570,6 +1627,11 @@ void VDRControl::CreateControls() {
   int buttonSize = fontHeight * 1.2;  // Adjust multiplier as needed
   // Ensure minimum size of 32 pixels for touch usability
   buttonSize = std::max(buttonSize, 32);
+#ifdef __WXQT__
+  // A simple way to get touch-compatible tool size
+  wxRect tbRect = GetMasterToolbarRect();
+  buttonSize = std::max(buttonSize, tbRect.width / 2);
+#endif
   wxSize buttonDimension(buttonSize, buttonSize);
 
   // File information section
@@ -1673,9 +1735,14 @@ void VDRControl::OnLoadButton(wxCommandEvent& event) {
   }
 
   wxString file;
+  wxString init_directory = wxEmptyString;
+#ifdef __WXQT__
+  init_directory = *GetpPrivateApplicationDataLocation();
+#endif
+
   int response = PlatformFileSelectorDialog(GetOCPNCanvasWindow(), &file,
                                             _("Select Playback File"),
-                                            wxEmptyString, _T(""), _T("*.*"));
+                                            init_directory, _T(""), _T("*.*"));
 
   if (response == wxID_OK) {
     if (m_pvdr->LoadFile(file)) {  // We'll add this method to vdr_pi
@@ -1843,7 +1910,7 @@ void VDRControl::OnDataFormatRadioButton(wxCommandEvent& event) {
 }
 
 void VDRControl::OnSettingsButton(wxCommandEvent& event) {
-  m_pvdr->ShowPreferencesDialog(this);
+  m_pvdr->ShowPreferencesDialogNative(this);
   event.Skip();
 }
 

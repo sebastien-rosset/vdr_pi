@@ -209,11 +209,7 @@ void VDRPrefsDialog::CreateControls() {
       new wxStaticText(this, wxID_ANY, _("minutes below speed threshold")), 0,
       wxALIGN_CENTER_VERTICAL);
   autoSizer->Add(delaySizer, 0, wxLEFT | wxRIGHT | wxBOTTOM, 5);
-
   mainSizer->Add(autoSizer, 0, wxEXPAND | wxALL, 5);
-
-  // Set initial control states
-  UpdateControlStates();
 
   // Standard dialog buttons
   wxStdDialogButtonSizer* buttonSizer = new wxStdDialogButtonSizer();
@@ -222,6 +218,10 @@ void VDRPrefsDialog::CreateControls() {
   buttonSizer->Realize();
 
   mainSizer->Add(buttonSizer, 0, wxEXPAND | wxALL, 5);
+
+  // Set initial control states
+  UpdateControlStates();
+
 }
 
 void VDRPrefsDialog::OnOK(wxCommandEvent& event) {
