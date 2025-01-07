@@ -61,11 +61,9 @@ VDRPrefsDialog::VDRPrefsDialog(wxWindow* parent, wxWindowID id,
       m_speed_threshold(speedThreshold),
       m_stop_delay(stopDelay),
       m_protocols(protocols) {
-  SetSizeHints(wxSize(-1, -1), wxSize(-1, -1));
-
   CreateControls();
   GetSizer()->Fit(this);
-  //GetSizer()->SetSizeHints(this);
+  GetSizer()->SetSizeHints(this);
   Centre();
 }
 
@@ -81,7 +79,7 @@ void VDRPrefsDialog::UpdateControlStates() {
   // are checked
   bool speedEnabled = autoRecordEnabled && m_useSpeedThresholdCheck->GetValue();
   m_speedThresholdCtrl->Enable(speedEnabled);
-  //m_stopDelayCtrl->Enable(speedEnabled);
+  m_stopDelayCtrl->Enable(speedEnabled);
 }
 
 void VDRPrefsDialog::CreateControls() {
@@ -213,17 +211,11 @@ void VDRPrefsDialog::CreateControls() {
   autoSizer->Add(delaySizer, 0, wxLEFT | wxRIGHT | wxBOTTOM, 5);
   mainSizer->Add(autoSizer, 0, wxEXPAND | wxALL, 5);
 
-#if 1
   // Standard dialog buttons
   wxStdDialogButtonSizer* buttonSizer = new wxStdDialogButtonSizer();
   buttonSizer->AddButton(new wxButton(this, wxID_OK));
   buttonSizer->AddButton(new wxButton(this, wxID_CANCEL));
   buttonSizer->Realize();
-#else
-  wxBoxSizer* buttonSizer = new wxBoxSizer(wxHORIZONTAL);
-  buttonSizer->Add(new wxButton(this, wxID_OK, _("OK")), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 5);
-  buttonSizer->Add(new wxButton(this, wxID_CANCEL, _("Cancel")), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 5);
-#endif
 
   mainSizer->Add(buttonSizer, 0, wxEXPAND | wxALL, 5);
 
@@ -240,7 +232,7 @@ void VDRPrefsDialog::OnOK(wxCommandEvent& event) {
   m_auto_start_recording = m_autoStartRecordingCheck->GetValue();
   m_use_speed_threshold = m_useSpeedThresholdCheck->GetValue();
   m_speed_threshold = m_speedThresholdCtrl->GetValue();
-  //m_stop_delay = m_stopDelayCtrl->GetValue();
+  m_stop_delay = m_stopDelayCtrl->GetValue();
 
   m_protocols.nmea0183 = m_nmea0183Check->GetValue();
   m_protocols.nmea2000 = m_nmea2000Check->GetValue();

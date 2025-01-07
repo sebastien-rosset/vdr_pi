@@ -1121,6 +1121,41 @@ void vdr_pi::ShowPreferencesDialog(wxWindow* parent) {
   }
 }
 
+void vdr_pi::ShowPreferencesDialogNative(wxWindow* parent) {
+  VDRPrefsDialog dlg(parent, wxID_ANY, m_data_format, m_recording_dir,
+                     m_log_rotate, m_log_rotate_interval,
+                     m_auto_start_recording, m_use_speed_threshold,
+                     m_speed_threshold, m_stop_delay, m_protocols);
+
+  if (dlg.ShowModal() == wxID_OK) {
+    bool previousNMEA2000State = m_protocols.nmea2000;
+    bool previousSignalKState = m_protocols.signalK;
+    SetDataFormat(dlg.GetDataFormat());
+    SetRecordingDir(dlg.GetRecordingDir());
+    SetLogRotate(dlg.GetLogRotate());
+    SetLogRotateInterval(dlg.GetLogRotateInterval());
+    SetAutoStartRecording(dlg.GetAutoStartRecording());
+    SetUseSpeedThreshold(dlg.GetUseSpeedThreshold());
+    SetSpeedThreshold(dlg.GetSpeedThreshold());
+    SetStopDelay(dlg.GetStopDelay());
+    m_protocols = dlg.GetProtocolSettings();
+    SaveConfig();
+
+    // Update NMEA 2000 listeners if the setting changed
+    if (previousNMEA2000State != m_protocols.nmea2000) {
+      UpdateNMEA2000Listeners();
+    }
+    if (previousSignalKState != m_protocols.signalK) {
+      UpdateSignalKListeners();
+    }
+
+    // Update UI if needed
+    if (m_pvdrcontrol) {
+      m_pvdrcontrol->UpdateControls();
+    }
+  }
+}
+
 void vdr_pi::CheckLogRotation() {
   if (!m_recording || !m_log_rotate) return;
 
@@ -1700,9 +1735,14 @@ void VDRControl::OnLoadButton(wxCommandEvent& event) {
   }
 
   wxString file;
+  wxString init_directory = wxEmptyString;
+#ifdef __WXQT__
+  init_directory = *GetpPrivateApplicationDataLocation();
+#endif
+
   int response = PlatformFileSelectorDialog(GetOCPNCanvasWindow(), &file,
                                             _("Select Playback File"),
-                                            wxEmptyString, _T(""), _T("*.*"));
+                                            init_directory, _T(""), _T("*.*"));
 
   if (response == wxID_OK) {
     if (m_pvdr->LoadFile(file)) {  // We'll add this method to vdr_pi
@@ -1870,7 +1910,7 @@ void VDRControl::OnDataFormatRadioButton(wxCommandEvent& event) {
 }
 
 void VDRControl::OnSettingsButton(wxCommandEvent& event) {
-  m_pvdr->ShowPreferencesDialog(this);
+  m_pvdr->ShowPreferencesDialogNative(this);
   event.Skip();
 }
 
