@@ -221,7 +221,6 @@ void VDRPrefsDialog::CreateControls() {
 
   // Set initial control states
   UpdateControlStates();
-
 }
 
 void VDRPrefsDialog::OnOK(wxCommandEvent& event) {
