@@ -44,7 +44,7 @@
 #include <wx/radiobut.h>
 
 #include "ocpn_plugin.h"
-
+#include "vdr_pi_time.h"
 #include "config.h"
 
 #define VDR_TOOL_POSITION -1  // Request default positioning of toolbar tool
@@ -163,7 +163,7 @@ public:
   void SetColorScheme(PI_ColorScheme cs);
 
   /** Load a VDR file containing NMEA data, either in raw NMEA format or CSV. */
-  bool LoadFile(const wxString& filename);
+  bool LoadFile(const wxString& filename, wxString* error = nullptr);
   /** Start recording VDR data. */
   void StartRecording();
   /** Stop recording VDR data and close the VDR file. */
@@ -342,6 +342,10 @@ public:
   bool HasValidTimestamps() const;
   const wxString& GetFileStatus() const { return m_fileStatus; }
 
+  /** Helper function to extract NMEA sentence components. */
+  bool ParseNMEAComponents(const wxString& nmea, wxString* talkerId,
+                           wxString* sentenceId);
+
 private:
   class TimerHandler : public wxTimer {
   public:
@@ -359,8 +363,6 @@ private:
   wxString ParseCSVLineTimestamp(const wxString& line, wxDateTime* timestamp);
   /** Return true if the message is a NMEA0183 or AIS message */
   bool IsNMEA0183OrAIS(const wxString& message);
-  /** Parse timestamp from NMEA0183 sentence. */
-  bool ParseNMEATimestamp(const wxString& nmea, wxDateTime* timestamp);
   /** Update SignalK event listeners when preferences are changed. */
   void UpdateSignalKListeners();
   /** Update NMEA 2000 event listeners when preferences are changed. */
@@ -468,9 +470,10 @@ private:
   /**  Real time when playback started. */
   wxDateTime m_playback_base_time;
 
-  /** The first (earliest) timestamp in the VDR file. */
+  /** The first (earliest) timestamp from the primary time source in the VDR
+   * file. */
   wxDateTime m_firstTimestamp;
-  /** The last timestamp in the VDR file. */
+  /** The last timestamp from the primary time source in the VDR file. */
   wxDateTime m_lastTimestamp;
   /** The current timestamp during VDR playback. */
   wxDateTime m_currentTimestamp;
@@ -521,6 +524,19 @@ private:
 
   wxEvtHandler* m_eventHandler;
   TimerHandler* m_timer;
+  TimestampParser m_timestampParser;  //!< Helper for timestamp parsing
+  /**
+   * The set of time sources in the VDR recording.
+   * Each time source is identified by its NMEA sentence type, talker ID and
+   * precision.
+   */
+  std::unordered_map<TimeSource, TimeSourceDetails, TimeSourceHash>
+      m_timeSources;
+  /** The primary time source in the VDR recording. */
+  TimeSource* m_primaryTimeSource;
+
+  /** Helper to select the best primary time source. */
+  void SelectPrimaryTimeSource();
 
 #ifdef __ANDROID__
   wxString m_temp_outfile;

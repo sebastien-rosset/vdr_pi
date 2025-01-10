@@ -34,6 +34,9 @@ include(Plugin.cmake)
 project(${PKG_NAME} VERSION ${PKG_VERSION})
 include(PluginCompiler)
 
+# Option to enable/disable testing
+option(OCPN_BUILD_TEST "Build plugin tests" OFF)
+
 add_library(${CMAKE_PROJECT_NAME} SHARED EXCLUDE_FROM_ALL ${SRC})
 include_directories(BEFORE ${CMAKE_BINARY_DIR}/include)
 
@@ -122,3 +125,10 @@ configure_file(
   ${CMAKE_BINARY_DIR}/${pkg_displayname}.xml.in
   @ONLY
 )
+
+# Add the test directory if testing is enabled
+if(OCPN_BUILD_TEST)
+    message(STATUS "Building with tests enabled")
+    enable_testing()
+    add_subdirectory(test)
+endif()

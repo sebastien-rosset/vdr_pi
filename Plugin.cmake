@@ -54,6 +54,8 @@ set(SRC
   src/vdr_pi.cpp
   src/vdr_pi_prefs.h
   src/vdr_pi_prefs.cpp
+  src/vdr_pi_time.h
+  src/vdr_pi_time.cpp
 )
 
 
