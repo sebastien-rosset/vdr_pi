@@ -92,6 +92,7 @@ vdr_pi::vdr_pi(void* ppimgr) : opencpn_plugin_118(ppimgr) {
   // Runtime variables
   m_recording = false;
   m_recording_paused = false;
+  m_playing = false;
   m_is_csv_file = false;
   m_last_speed = 0.0;
   m_sentence_buffer.clear();
