@@ -44,7 +44,7 @@
 #include <wx/radiobut.h>
 
 #include "ocpn_plugin.h"
-
+#include "vdr_pi_time.h"
 #include "config.h"
 
 #define VDR_TOOL_POSITION -1  // Request default positioning of toolbar tool
@@ -163,7 +163,7 @@ public:
   void SetColorScheme(PI_ColorScheme cs);
 
   /** Load a VDR file containing NMEA data, either in raw NMEA format or CSV. */
-  bool LoadFile(const wxString& filename);
+  bool LoadFile(const wxString& filename, wxString* error = nullptr);
   /** Start recording VDR data. */
   void StartRecording();
   /** Stop recording VDR data and close the VDR file. */
@@ -185,7 +185,11 @@ public:
   /** Return whether the end of the playback file has been reached. */
   bool IsAtFileEnd() const { return m_atFileEnd; }
   void ResetEndOfFile() { m_atFileEnd = false; }
-  /** Return the next playback message based on the message timestamp. */
+  /**
+   * Return the date/time the next message should be played.
+   *
+   * The time is relative to the computer clock.
+   */
   wxDateTime GetNextPlaybackTime() const;
 
   /** Invoked during playback. */
@@ -342,6 +346,36 @@ public:
   bool HasValidTimestamps() const;
   const wxString& GetFileStatus() const { return m_fileStatus; }
 
+  /** Helper function to extract NMEA sentence components. */
+  bool ParseNMEAComponents(const wxString& nmea, wxString* talkerId,
+                           wxString* sentenceId);
+
+  /** Helper to flush the sentence buffer to NMEA stream. */
+  void FlushSentenceBuffer();
+
+  /**
+   * Get the next non-empty line from the input stream. Empty lines are skipped.
+   * A line is considered empty if it contains only whitespace.
+   *
+   * Lines starting with '#' are considered comments and are also skipped.
+   *
+   * @param fromStart If true, starts reading from the beginning of the file.
+   *                 If false, continues from current position.
+   * @return The next non-empty line with leading/trailing whitespace removed,
+   *         or empty string if no more non-empty lines exist or file isn't
+   * open.
+   */
+  wxString GetNextNonEmptyLine(bool fromStart = false);
+
+  /**
+   * Get details for all available time sources
+   * @return Map of time sources and their details
+   */
+  const std::unordered_map<TimeSource, TimeSourceDetails, TimeSourceHash>&
+  GetTimeSources() const {
+    return m_timeSources;
+  }
+
 private:
   class TimerHandler : public wxTimer {
   public:
@@ -359,8 +393,6 @@ private:
   wxString ParseCSVLineTimestamp(const wxString& line, wxDateTime* timestamp);
   /** Return true if the message is a NMEA0183 or AIS message */
   bool IsNMEA0183OrAIS(const wxString& message);
-  /** Parse timestamp from NMEA0183 sentence. */
-  bool ParseNMEATimestamp(const wxString& nmea, wxDateTime* timestamp);
   /** Update SignalK event listeners when preferences are changed. */
   void UpdateSignalKListeners();
   /** Update NMEA 2000 event listeners when preferences are changed. */
@@ -369,21 +401,10 @@ private:
   void OnN2KEvent(wxCommandEvent& ev);
   /** Process incoming SignalK message from OpenCPN. */
   void OnSignalKEvent(wxCommandEvent& ev);
+  double GetSpeedMultiplier() const;
 
-  /** Helper to flush the sentence buffer to NMEA stream. */
-  void FlushSentenceBuffer();
-
-  /**
-   * Get the next non-empty line from the input stream. Empty lines are skipped.
-   * A line is considered empty if it contains only whitespace.
-   *
-   * @param fromStart If true, starts reading from the beginning of the file.
-   *                 If false, continues from current position.
-   * @return The next non-empty line with leading/trailing whitespace removed,
-   *         or empty string if no more non-empty lines exist or file isn't
-   * open.
-   */
-  wxString GetNextNonEmptyLine(bool fromStart = false);
+  /** Helper to select the best primary time source. */
+  void SelectPrimaryTimeSource();
 
   int m_tb_item_id_record;
   int m_tb_item_id_play;
@@ -468,9 +489,10 @@ private:
   /**  Real time when playback started. */
   wxDateTime m_playback_base_time;
 
-  /** The first (earliest) timestamp in the VDR file. */
+  /** The first (earliest) timestamp from the primary time source in the VDR
+   * file. */
   wxDateTime m_firstTimestamp;
-  /** The last timestamp in the VDR file. */
+  /** The last timestamp from the primary time source in the VDR file. */
   wxDateTime m_lastTimestamp;
   /** The current timestamp during VDR playback. */
   wxDateTime m_currentTimestamp;
@@ -521,6 +543,17 @@ private:
 
   wxEvtHandler* m_eventHandler;
   TimerHandler* m_timer;
+  TimestampParser m_timestampParser;  //!< Helper for timestamp parsing
+  /**
+   * The set of time sources in the VDR recording.
+   * Each time source is identified by its NMEA sentence type, talker ID and
+   * precision.
+   */
+  std::unordered_map<TimeSource, TimeSourceDetails, TimeSourceHash>
+      m_timeSources;
+  /** The primary time source in the VDR recording. */
+  TimeSource m_primaryTimeSource;
+  bool m_hasPrimaryTimeSource;
 
 #ifdef __ANDROID__
   wxString m_temp_outfile;
@@ -571,7 +604,10 @@ public:
   void UpdateTimeLabel();
 
   /** Get current playback speed multiplier setting. */
-  double GetSpeedMultiplier() const { return m_speedSlider->GetValue(); }
+  int GetSpeedMultiplier() const { return m_speedSlider->GetValue(); }
+
+  /** Set the speed multiplier settting. */
+  void SetSpeedMultiplier(int value);
 
 private:
   /** Create and layout UI controls. */

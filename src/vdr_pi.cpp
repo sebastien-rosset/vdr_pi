@@ -1,13 +1,5 @@
-/******************************************************************************
- * $Id: vdr_pi.cpp, v0.2 2011/05/23 SethDart Exp $
- *
- * Project:  OpenCPN
- * Purpose:  VDR Plugin
- * Author:   Jean-Eudes Onfray
- *
- ***************************************************************************
- *   Copyright (C) 2011 by Jean-Eudes Onfray   *
- *   $EMAIL$   *
+/***************************************************************************
+ *   Copyright (C) 2011 by Jean-Eudes Onfray                               *
  *                                                                         *
  *   This program is free software; you can redistribute it and/or modify  *
  *   it under the terms of the GNU General Public License as published by  *
@@ -23,8 +15,7 @@
  *   along with this program; if not, write to the                         *
  *   Free Software Foundation, Inc.,                                       *
  *   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
- ***************************************************************************
- */
+ **************************************************************************/
 
 #include "wx/wxprec.h"
 
@@ -38,6 +29,7 @@
 
 #include <map>
 #include <typeinfo>
+#include <algorithm>
 
 #include "ocpn_plugin.h"
 #include "vdr_pi_prefs.h"
@@ -87,7 +79,7 @@ vdr_pi::vdr_pi(void* ppimgr) : opencpn_plugin_118(ppimgr) {
   else
     wxLogWarning("VDR panel icon has NOT been loaded");
 
-  m_pvdrcontrol = NULL;
+  m_pvdrcontrol = nullptr;
 
   // Runtime variables
   m_recording = false;
@@ -162,7 +154,7 @@ bool vdr_pi::DeInit(void) {
     m_pauimgr->DetachPane(m_pvdrcontrol);
     m_pvdrcontrol->Close();
     m_pvdrcontrol->Destroy();
-    m_pvdrcontrol = NULL;
+    m_pvdrcontrol = nullptr;
   }
 
   if (m_recording) {
@@ -282,11 +274,9 @@ void vdr_pi::UpdateNMEA2000Listeners() {
 
 // Format timestamp: YYYY-MM-DDTHH:MM:SS.mmmZ
 // The format combines ISO format with milliseconds in UTC.
+// ts is assumed to be in UTC already.
 wxString FormatIsoDateTime(const wxDateTime& ts) {
-  wxDateTime ts1 = ts.ToUTC();
-  wxString timestamp = ts1.Format("%Y-%m-%dT%H:%M:%S.");
-  timestamp += wxString::Format("%03ldZ", ts1.GetMillisecond());
-  return timestamp;
+  return ts.Format("%Y-%m-%dT%H:%M:%S.%lZ");
 }
 
 void vdr_pi::OnSignalKEvent(wxCommandEvent& event) {
@@ -540,76 +530,11 @@ bool vdr_pi::ParseCSVHeader(const wxString& header) {
   return is_csv_file;
 }
 
-/**
- * Parse a timestamp from a string in ISO 8601 format.
- */
-bool ParseTimestamp(const wxString& timeStr, wxDateTime* timestamp) {
-  wxString::const_iterator end;
-  wxDateTime tempTime;
-
-  // Try formats with milliseconds
-  if (tempTime.ParseFormat(timeStr, "%Y-%m-%dT%H:%M:%S.%l%z", &end)) {
-    *timestamp = tempTime;
-    return true;
-  }
-
-  // Try formats without milliseconds
-  if (tempTime.ParseFormat(timeStr, "%Y-%m-%dT%H:%M:%S%z", &end)) {
-    *timestamp = tempTime;
-    return true;
-  }
-
-  return false;
-}
-
 wxString vdr_pi::ParseCSVLineTimestamp(const wxString& line,
                                        wxDateTime* timestamp) {
   assert(m_is_csv_file);
-
-  wxArrayString fields;
-  wxString currentField;
-  bool inQuotes = false;
-
-  for (size_t i = 0; i < line.Length(); i++) {
-    wxChar ch = line[i];
-
-    if (ch == '"') {
-      if (inQuotes && i + 1 < line.Length() && line[i + 1] == '"') {
-        // Double quotes inside quoted field = escaped quote
-        currentField += '"';
-        i++;  // Skip next quote
-      } else {
-        // Toggle quote state
-        inQuotes = !inQuotes;
-      }
-    } else if (ch == ',' && !inQuotes) {
-      // End of field
-      fields.Add(currentField);
-      currentField.Clear();
-    } else {
-      currentField += ch;
-    }
-  }
-
-  // Add the last field
-  fields.Add(currentField);
-
-  // Parse timestamp if requested and available
-  if (timestamp && m_timestamp_idx != static_cast<unsigned int>(-1) &&
-      m_timestamp_idx < fields.GetCount()) {
-    if (!ParseTimestamp(fields[m_timestamp_idx], timestamp)) {
-      return wxEmptyString;
-    }
-  }
-
-  // Get message field
-  if (m_message_idx == static_cast<unsigned int>(-1) ||
-      m_message_idx >= fields.GetCount()) {
-    return wxEmptyString;
-  }
-
-  // No need to unescape quotes here as we handled them during parsing
-  return fields[m_message_idx];
+  return m_timestampParser.ParseCSVLineTimestamp(line, m_timestamp_idx,
+                                                 m_message_idx, timestamp);
 }
 
 void vdr_pi::FlushSentenceBuffer() {
@@ -619,19 +544,28 @@ void vdr_pi::FlushSentenceBuffer() {
   m_sentence_buffer.clear();
 }
 
+double vdr_pi::GetSpeedMultiplier() const {
+  return m_pvdrcontrol ? m_pvdrcontrol->GetSpeedMultiplier() : 1.0;
+}
+
 void vdr_pi::Notify() {
   if (!m_istream.IsOpened()) return;
 
   wxDateTime now = wxDateTime::UNow();
   wxDateTime targetTime;
   bool behindSchedule = true;
+  int precision;
+
+  // For non-timestamped files, base rate of 10 messages/second
+  const int BASE_MESSAGES_PER_BATCH = 10;
+  const int BASE_INTERVAL_MS = 1000;  // 1 second
 
   // Keep processing messages until we catch up with scheduled time.
   while (behindSchedule && !m_istream.Eof()) {
     wxString line;
     int pos = m_istream.GetCurrentLine();
 
-    if (m_istream.Eof() || pos == -1) {
+    if (pos == -1) {
       // First line - check if it's CSV.
       line = GetNextNonEmptyLine(true);
       m_is_csv_file = ParseCSVHeader(line);
@@ -639,6 +573,10 @@ void vdr_pi::Notify() {
         // Get first data line.
         line = GetNextNonEmptyLine();
         m_playback_base_time = m_firstTimestamp;
+      } else {
+        // For non-CSV, process the first line as NMEA.
+        // Reset to start of file.
+        line = GetNextNonEmptyLine(true /* fromStart */);
       }
     } else {
       line = GetNextNonEmptyLine();
@@ -656,56 +594,67 @@ void vdr_pi::Notify() {
     // Parse the line according to detected format (CSV or raw NMEA/AIS).
     wxDateTime timestamp;
     wxString nmea;
-    bool hasTimestamp = false;
+    bool msgHasTimestamp = false;
 
     if (m_is_csv_file) {
       nmea = ParseCSVLineTimestamp(line, &timestamp);
       if (!nmea.IsEmpty()) {
         nmea += "\r\n";
-        hasTimestamp = true;
+        msgHasTimestamp = true;
       }
     } else {
       nmea = line + "\r\n";
-      hasTimestamp = ParseNMEATimestamp(line, &timestamp);
+      msgHasTimestamp =
+          m_timestampParser.ParseTimestamp(line, timestamp, precision);
     }
     if (!nmea.IsEmpty()) {
-      if (hasTimestamp) {
+      // Add sentence to buffer, maintaining max size.
+      m_sentence_buffer.push_back(nmea);
+
+      if (msgHasTimestamp) {
+        // The current sentence has a timestamp from the primary time source.
         m_currentTimestamp = timestamp;
         targetTime = GetNextPlaybackTime();
-
-        // Check if we've caught up to schedule
+        // Check if we've caught up to schedule.
         if (targetTime.IsValid() && targetTime > now) {
-          behindSchedule = false;
-          // Before scheduling next update, flush our sentence buffer
+          behindSchedule = false;  // This will break the loop.
+          // Before scheduling next update, flush our sentence buffer.
           FlushSentenceBuffer();
-          // Schedule next notification
+          // Schedule next notification.
           wxTimeSpan waitTime = targetTime - now;
           m_timer->Start(
               static_cast<int>(waitTime.GetMilliseconds().ToDouble()),
               wxTIMER_ONE_SHOT);
         }
+      } else if (!HasValidTimestamps() &&
+                 m_sentence_buffer.size() >= BASE_MESSAGES_PER_BATCH) {
+        // For files that do not have timestamped records (or timestamps are not
+        // in chronological order), use batch processing.
+        behindSchedule = false;  // This will break the loop.
+        FlushSentenceBuffer();
+
+        // Calculate interval based on speed multiplier
+        int interval =
+            static_cast<int>(BASE_INTERVAL_MS / GetSpeedMultiplier());
+
+        // Schedule next batch
+        wxLogMessage("Schedule next batch in %d", interval);
+        m_timer->Start(interval, wxTIMER_ONE_SHOT);
       }
-      // Add sentence to buffer, maintaining max size.
-      m_sentence_buffer.push_back(nmea);
+
       if (m_sentence_buffer.size() > MAX_MSG_BUFFER_SIZE) {
         if (!m_messages_dropped) {
-          double speedMultiplier =
-              m_pvdrcontrol ? m_pvdrcontrol->GetSpeedMultiplier() : 1.0;
           wxLogMessage(
               "Playback dropping messages to maintain timing at %.0fx speed",
-              speedMultiplier);
+              GetSpeedMultiplier());
           m_messages_dropped = true;
         }
         m_sentence_buffer.pop_front();
       }
     }
-    // If we're still behind or have no timestamps, schedule immediate next
-    // message
-    if (behindSchedule) {
-      m_timer->Start(1, wxTIMER_ONE_SHOT);
-    }
   }
-  // Update progress regardless of file type
+
+  // Update progress regardless of file type.
   if (m_pvdrcontrol) {
     m_pvdrcontrol->SetProgress(GetProgressFraction());
   }
@@ -717,12 +666,10 @@ wxDateTime vdr_pi::GetNextPlaybackTime() const {
     return wxDateTime();  // Return invalid time if we don't have valid
                           // timestamps
   }
-  double speedMultiplier =
-      m_pvdrcontrol ? m_pvdrcontrol->GetSpeedMultiplier() : 1.0;
   // Calculate when this message should be played relative to playback start.
   wxTimeSpan elapsedTime = m_currentTimestamp - m_firstTimestamp;
   wxLongLong ms = elapsedTime.GetMilliseconds();
-  double scaledMs = ms.ToDouble() / speedMultiplier;
+  double scaledMs = ms.ToDouble() / GetSpeedMultiplier();
   wxTimeSpan scaledElapsed =
       wxTimeSpan::Milliseconds(static_cast<long>(scaledMs));
   return m_playback_base_time + scaledElapsed;
@@ -751,7 +698,7 @@ void vdr_pi::OnToolbarToolCallback(int id) {
       m_pauimgr->DetachPane(m_pvdrcontrol);
       m_pvdrcontrol->Close();
       m_pvdrcontrol->Destroy();
-      m_pvdrcontrol = NULL;
+      m_pvdrcontrol = nullptr;
 
       // Update toolbar state
       SetToolbarItemState(id, false);
@@ -759,10 +706,9 @@ void vdr_pi::OnToolbarToolCallback(int id) {
     }
 
     if (!m_pvdrcontrol) {
-
       wxPoint dialog_position = wxPoint(100, 100);
       //  Dialog will be fixed position on Android, so position carefully
-#ifdef __WXQT__       // a surrogate for Android
+#ifdef __WXQT__  // a surrogate for Android
       wxRect tbRect = GetMasterToolbarRect();
       dialog_position.y = 0;
       dialog_position.x = tbRect.x + tbRect.width + 2;
@@ -975,12 +921,6 @@ void vdr_pi::AdjustPlaybackBaseTime() {
     return;
   }
 
-  // Get current speed multiplier from control
-  double speedMultiplier = 1.0;
-  if (m_pvdrcontrol) {
-    speedMultiplier = m_pvdrcontrol->GetSpeedMultiplier();
-  }
-
   // Calculate how much time has "elapsed" in the recording up to our current
   // position
   wxTimeSpan elapsed = m_currentTimestamp - m_firstTimestamp;
@@ -990,7 +930,7 @@ void vdr_pi::AdjustPlaybackBaseTime() {
   m_playback_base_time =
       wxDateTime::UNow() -
       wxTimeSpan::Milliseconds(static_cast<long>(
-          (elapsed.GetMilliseconds().ToDouble() / speedMultiplier)));
+          (elapsed.GetMilliseconds().ToDouble() / GetSpeedMultiplier())));
 }
 
 void vdr_pi::StartPlayback() {
@@ -1030,6 +970,7 @@ void vdr_pi::StartPlayback() {
       "Start playback from file: %s. Progress: %.2f. Has timestamps: %d",
       m_ifilename, GetProgressFraction(), m_has_timestamps);
   // Process first line immediately.
+  m_istream.GoToLine(-1);
   Notify();
 }
 
@@ -1083,7 +1024,7 @@ void vdr_pi::ShowPreferencesDialog(wxWindow* parent) {
                      m_log_rotate, m_log_rotate_interval,
                      m_auto_start_recording, m_use_speed_threshold,
                      m_speed_threshold, m_stop_delay, m_protocols);
-#ifdef __WXQT__     // Android
+#ifdef __WXQT__  // Android
   if (parent) {
     int xmax = parent->GetSize().GetWidth();
     int ymax = parent->GetParent()
@@ -1175,115 +1116,224 @@ void vdr_pi::CheckLogRotation() {
   }
 }
 
+bool vdr_pi::ParseNMEAComponents(const wxString& nmea, wxString* talkerId,
+                                 wxString* sentenceId) {
+  // Check for valid NMEA sentence
+  if (nmea.IsEmpty() || nmea[0] != '$') {
+    return false;
+  }
+
+  // Split the sentence into fields
+  wxStringTokenizer tok(nmea, wxT(",*"));
+  if (!tok.HasMoreTokens()) return false;
+
+  wxString header = tok.GetNextToken();
+  if (header.length() < 6) return false;  // Need at least $GPXXX
+
+  // Extract talker ID (GP, GN, etc.) and sentence ID (RMC, ZDA, etc.)
+  *talkerId = header.Mid(1, 2);
+  *sentenceId = header.Mid(3);
+
+  // Get time field based on sentence type
+  if (sentenceId->Contains(wxT("RMC"))) {
+    return true;
+  } else if (sentenceId->Contains(wxT("ZDA"))) {
+    return true;
+  } else if (sentenceId->Contains(wxT("GGA")) ||
+             sentenceId->Contains(wxT("GBS")) ||
+             sentenceId->Contains(wxT("GLL"))) {
+    return true;
+  }
+  return false;
+}
+
+void vdr_pi::SelectPrimaryTimeSource() {
+  m_hasPrimaryTimeSource = false;
+  if (m_timeSources.empty()) return;
+
+  // Scoring criteria for each source
+  struct SourceScore {
+    TimeSource source;
+    int score;
+  };
+
+  std::vector<SourceScore> scores;
+
+  for (const auto& source : m_timeSources) {
+    if (!source.second.isChronological) {
+      // Skip sources with non-chronological timestamps
+      continue;
+    }
+    SourceScore score = {source.first, 0};
+    // Prefer sources with complete date+time
+    if (source.first.sentenceId.Contains("RMC") ||
+        source.first.sentenceId.Contains("ZDA")) {
+      score.score += 10;
+    }
+
+    // Prefer higher precision
+    score.score += source.first.precision * 2;
+    scores.push_back(score);
+  }
+
+  // Sort by score
+  std::sort(scores.begin(), scores.end(),
+            [](const SourceScore& a, const SourceScore& b) {
+              return a.score > b.score;
+            });
+
+  // Select highest scoring source as primary
+  if (!scores.empty()) {
+    m_primaryTimeSource = scores[0].source;
+    m_hasPrimaryTimeSource = true;
+  }
+}
+
 bool vdr_pi::ScanFileTimestamps() {
   if (!m_istream.IsOpened()) {
     return false;
   }
-
-  // Initialize timestamps as invalid.
+  wxLogMessage("Scanning timestamps in %s", m_ifilename);
+  // Reset all state
   m_has_timestamps = false;
   m_firstTimestamp = wxDateTime();
   m_lastTimestamp = wxDateTime();
   m_currentTimestamp = wxDateTime();
-  bool foundFirst = false;  // Flag to track first valid timestamp found.
+  m_timeSources.clear();
+  m_hasPrimaryTimeSource = false;
+  bool foundFirst = false;
   wxDateTime previousTimestamp;
 
-  // Read first line to check format.
+  // Read first line to check format
   wxString line = GetNextNonEmptyLine(true);
   if (m_istream.Eof() && line.IsEmpty()) {
     wxLogMessage("File is empty or contains only empty lines");
     return false;
   }
+  m_timestampParser.Reset();
 
-  // Try to parse as CSV file.
+  // Try to parse as CSV file
   m_is_csv_file = ParseCSVHeader(line);
 
-  // If CSV, start with second line, otherwise start with first.
   if (m_is_csv_file) {
+    // CSV file - expect timestamp column and strict chronological order
     line = GetNextNonEmptyLine();
-  } else {
-    // Raw NMEA/AIS, reset to start.
-    line = GetNextNonEmptyLine(true);
-  }
-
-  // Scan through file
-  while (!m_istream.Eof()) {
-    if (!line.IsEmpty()) {
-      wxDateTime timestamp;
-      bool validTimestamp = false;
-
-      if (m_is_csv_file) {
+    while (!m_istream.Eof()) {
+      if (!line.IsEmpty()) {
+        wxDateTime timestamp;
         wxString nmea = ParseCSVLineTimestamp(line, &timestamp);
-        validTimestamp = !nmea.IsEmpty() && timestamp.IsValid();
-      } else {
-        validTimestamp = ParseNMEATimestamp(line, &timestamp);
-      }
-
-      if (validTimestamp) {
-        if (previousTimestamp.IsValid()) {
-          wxTimeSpan diff = timestamp - previousTimestamp;
-          // Be lenient with small jumps, but warn about large ones.
-          // One scenario to consider is a RMC sentence with milliseconds
-          // precision, followed by a ZDA sentence with only seconds precision.
-          // Example:
-          // RMC timestamp: 2016-05-06T15:53:51.600Z
-          // ZDA timestamp: 2016-05-06T15:53:51.000Z
-          // A naive comparison would show a 600ms backwards jump, but we should
-          // ignore it. On the other hand, if the time goes backwards by a large
-          // amount (e.g., 3 days), we cannot use the timestamps in the file.
-          if (diff.GetSeconds().ToLong() < -5) {
+        if (!nmea.IsEmpty() && timestamp.IsValid()) {
+          // For CSV files, we require chronological order
+          if (previousTimestamp.IsValid() && timestamp < previousTimestamp) {
             wxLogMessage(
-                "VDR file contains significant timestamp jump backwards. "
-                "Previous ts: %s, Current ts: %s",
+                "CSV file contains non-chronological timestamps. "
+                "Previous: %s, Current: %s",
                 FormatIsoDateTime(previousTimestamp),
                 FormatIsoDateTime(timestamp));
-            // If the VDR file contains non-monotonically increasing timestamps,
-            // (i.e., the file is not in chronological order), we cannot use
-            // timestamps for playback. We will still allow playback based on
-            // line number for NMEA files without timestamps.
             m_has_timestamps = false;
             m_firstTimestamp = wxDateTime();
             m_lastTimestamp = wxDateTime();
             m_currentTimestamp = wxDateTime();
-            // Reset file position
+            m_fileStatus = _("Timestamps not in chronological order");
             m_istream.GoToLine(0);
-            m_fileStatus = _("Timestamps are not in chronological order");
-            return !m_is_csv_file;
+            return false;
           }
-        }
-        previousTimestamp = timestamp;
+          previousTimestamp = timestamp;
+          m_lastTimestamp = timestamp;
 
-        // Update last timestamp for each valid timestamp found.
-        m_lastTimestamp = timestamp;
-
-        // Store first timestamp found
-        if (!foundFirst) {
-          m_firstTimestamp = timestamp;
-          m_currentTimestamp = timestamp;  // Initialize current to first.
-          foundFirst = true;
+          if (!foundFirst) {
+            m_firstTimestamp = timestamp;
+            m_currentTimestamp = timestamp;
+            foundFirst = true;
+          }
+          m_has_timestamps = true;  // Found at least one valid timestamp.
         }
       }
+      line = GetNextNonEmptyLine();
     }
-    line = GetNextNonEmptyLine();
-  }
-
-  // Reset file position to start for playback
-  m_istream.GoToLine(0);
-  // Set timestamp validity flag
-  m_has_timestamps = foundFirst;
-
-  if (m_has_timestamps) {
-    m_fileStatus.Clear();
-    wxLogMessage("Found timestamps in %s file from %s to %s",
-                 m_is_csv_file ? "CSV" : "NMEA",
-                 FormatIsoDateTime(m_firstTimestamp),
-                 FormatIsoDateTime(m_lastTimestamp));
   } else {
-    m_fileStatus = _("No timestamps found (missing RMC/ZDA)");
-    wxLogMessage("No timestamps found in %s file",
-                 m_is_csv_file ? "CSV" : "NMEA");
+    // Raw NMEA/AIS - scan for time sources and assess quality
+    int precision = 0;
+    while (!m_istream.Eof()) {
+      if (!line.IsEmpty()) {
+        wxString talkerId, sentenceId;
+        if (ParseNMEAComponents(line, &talkerId, &sentenceId)) {
+          // Create time source entry
+          TimeSource source;
+          source.talkerId = talkerId;
+          source.sentenceId = sentenceId;
+
+          wxDateTime timestamp;
+          if (m_timestampParser.ParseTimestamp(line, timestamp, precision)) {
+            source.precision = precision;
+            if (m_timeSources.find(source) == m_timeSources.end()) {
+              TimeSourceDetails details;
+              details.startTime = timestamp;
+              details.currentTime = timestamp;
+              details.endTime = timestamp;
+              details.isChronological = true;
+              m_timeSources[source] = details;
+            } else {
+              // Update existing source
+              TimeSourceDetails& details = m_timeSources[source];
+              // Check if timestamps are still chronological
+              if (timestamp < details.currentTime) {
+                details.isChronological = false;
+              }
+              details.currentTime = timestamp;
+              details.endTime = timestamp;
+            }
+            m_has_timestamps = true;
+          }
+        }
+      }
+      line = GetNextNonEmptyLine();
+    }
+
+    // Analyze time sources and select primary.
+    SelectPrimaryTimeSource();
+
+    if (m_has_timestamps) {
+      m_fileStatus.Clear();
+      for (const auto& source : m_timeSources) {
+        wxLogMessage(
+            "  %s%s: precision=%d. isChronological=%d. Start=%s. End=%s",
+            source.first.talkerId, source.first.sentenceId,
+            source.first.precision, source.second.isChronological,
+            FormatIsoDateTime(source.second.startTime),
+            FormatIsoDateTime(source.second.endTime));
+      }
+      if (m_hasPrimaryTimeSource) {
+        m_firstTimestamp = m_timeSources[m_primaryTimeSource].startTime;
+        m_currentTimestamp = m_firstTimestamp;
+        m_lastTimestamp = m_timeSources[m_primaryTimeSource].endTime;
+        m_timestampParser.SetPrimaryTimeSource(m_primaryTimeSource.talkerId,
+                                               m_primaryTimeSource.sentenceId,
+                                               m_primaryTimeSource.precision);
+
+        wxLogMessage(
+            "Using %s%s (precision=%d) as primary time source. Start=%s. "
+            "End=%s",
+            m_primaryTimeSource.talkerId, m_primaryTimeSource.sentenceId,
+            m_primaryTimeSource.precision, FormatIsoDateTime(m_firstTimestamp),
+            FormatIsoDateTime(m_lastTimestamp));
+      }
+    } else {
+      m_fileStatus = _("No valid timestamps found");
+      wxLogMessage("No timestamps found in NMEA file");
+    }
   }
-  // Return false only for CSV files without timestamps (error condition)
+
+  // Reset file position to start
+  m_istream.GoToLine(-1);
+
+  // For CSV files, timestamps must be present and valid
+  // For NMEA files, we can still do line-based playback without timestamps
+  // There is a possibility that the file contains non-monotonically
+  // increasing timestamps, in which case we cannot use timestamps for
+  // playback. In this case, we will still allow playback based on line
+  // number.
+
   return !m_is_csv_file || m_has_timestamps;
 }
 
@@ -1292,7 +1342,7 @@ wxString vdr_pi::GetNextNonEmptyLine(bool fromStart) {
 
   wxString line;
   if (fromStart) {
-    m_istream.GoToLine(0);
+    m_istream.GoToLine(-1);
     line = m_istream.GetFirstLine();
   } else {
     line = m_istream.GetNextLine();
@@ -1300,7 +1350,7 @@ wxString vdr_pi::GetNextNonEmptyLine(bool fromStart) {
   line.Trim(true).Trim(false);
 
   // Keep reading until we find a non-empty line or reach EOF
-  while (line.IsEmpty() && !m_istream.Eof()) {
+  while ((line.IsEmpty() || line.StartsWith("#")) && !m_istream.Eof()) {
     line = m_istream.GetNextLine();
     line.Trim(true).Trim(false);
   }
@@ -1309,7 +1359,13 @@ wxString vdr_pi::GetNextNonEmptyLine(bool fromStart) {
 }
 
 bool vdr_pi::SeekToFraction(double fraction) {
+  // Validate input
+  if (fraction < 0.0 || fraction > 1.0) {
+    wxLogWarning("Invalid seek fraction: %f", fraction);
+    return false;
+  }
   if (!m_istream.IsOpened()) {
+    wxLogWarning("Cannot seek, no file open");
     return false;
   }
 
@@ -1372,11 +1428,12 @@ bool vdr_pi::SeekToFraction(double fraction) {
     wxString line;
     wxDateTime lastTimestamp;
     bool foundPosition = false;
+    int precision;
 
     while (!m_istream.Eof()) {
       line = GetNextNonEmptyLine();
       wxDateTime timestamp;
-      if (ParseNMEATimestamp(line, &timestamp)) {
+      if (m_timestampParser.ParseTimestamp(line, timestamp, precision)) {
         if (timestamp >= targetTime) {
           m_currentTimestamp = timestamp;
           foundPosition = true;
@@ -1423,7 +1480,7 @@ double vdr_pi::GetProgressFraction() const {
     if (totalLines > 0) {
       // Clamp current line to total lines to ensure fraction doesn't
       // exceed 1.0.
-      currentLine = std::min(currentLine, totalLines);
+      currentLine = std::max(0, std::min(currentLine, totalLines));
       return static_cast<double>(currentLine) / totalLines;
     }
   }
@@ -1445,119 +1502,6 @@ wxString vdr_pi::GetInputFile() const {
     }
   }
   return wxEmptyString;
-}
-
-bool vdr_pi::ParseNMEATimestamp(const wxString& nmea, wxDateTime* timestamp) {
-  // Check for valid NMEA sentence
-  if (nmea.IsEmpty() || nmea[0] != '$') {
-    return false;
-  }
-
-  // Split the sentence into fields
-  wxStringTokenizer tok(nmea, wxT(",*"));
-  if (!tok.HasMoreTokens()) return false;
-
-  wxString sentenceId = tok.GetNextToken();
-
-  // Get current date for sentences with only time
-  wxDateTime currentDate = wxDateTime::Now();
-  int year = currentDate.GetYear();
-  int month = currentDate.GetMonth() + 1;  // wxDateTime months are 0-11
-  int day = currentDate.GetDay();
-
-  // Function to parse time HHMMSS or HHMMSS.sss (millisecond precision
-  // optional)
-  auto parseTimeField = [](const wxString& timeStr, int* hour, int* minute,
-                           int* second, int* millisecond) -> bool {
-    if (timeStr.length() < 6) return false;
-
-    // Parse base time components
-    *hour = wxAtoi(timeStr.Mid(0, 2));
-    *minute = wxAtoi(timeStr.Mid(2, 2));
-    *second = wxAtoi(timeStr.Mid(4, 2));
-
-    // Parse optional milliseconds
-    *millisecond = 0;
-    if (timeStr.length() > 7) {  // ".xxx" format
-      double subseconds = wxAtof(timeStr.Mid(6));
-      *millisecond = static_cast<int>(subseconds * 1000);
-    }
-
-    // Validate
-    return *hour >= 0 && *hour <= 23 && *minute >= 0 && *minute <= 59 &&
-           *second >= 0 && *second <= 59 && *millisecond >= 0 &&
-           *millisecond < 1000;
-  };
-
-  if (sentenceId.Contains(wxT("RMC"))) {  // GPRMC, GNRMC etc
-    // Format: $GPRMC,HHMMSS.sss,A,LLLL.LL,a,YYYYY.YY,a,x.x,x.x,DDMMYY,x.x,a*hh
-    // Millisecond precision is optional.
-    if (!tok.HasMoreTokens()) return false;
-    wxString timeStr = tok.GetNextToken();
-
-    // Skip to date field (field 9)
-    for (int i = 0; i < 7 && tok.HasMoreTokens(); i++) {
-      tok.GetNextToken();
-    }
-
-    if (!tok.HasMoreTokens()) return false;
-    wxString dateStr = tok.GetNextToken();
-
-    // Parse date DDMMYY
-    if (dateStr.length() >= 6) {
-      day = wxAtoi(dateStr.Mid(0, 2));
-      month = wxAtoi(dateStr.Mid(2, 2));
-      year = 2000 + wxAtoi(dateStr.Mid(4, 2));  // Assuming 20xx
-                                                // Validate date components
-      if (month < 1 || month > 12 || day < 1 || day > 31 || year < 1980 ||
-          year > 2100) {
-        return false;
-      }
-    }
-
-    // Parse time HHMMSS or HHMMSS.sss (millisecond precision optional)
-    int hour, minute, second, millisecond;
-    if (!parseTimeField(timeStr, &hour, &minute, &second, &millisecond)) {
-      return false;
-    }
-    timestamp->Set(day, static_cast<wxDateTime::Month>(month - 1), year, hour,
-                   minute, second, millisecond);
-    return timestamp->IsValid();
-  } else if (sentenceId.Contains(wxT("ZDA"))) {  // GPZDA, GNZDA etc
-    // Format: $GPZDA,HHMMSS.sss,DD,MM,YYYY,xx,xx*hh
-    if (!tok.HasMoreTokens()) return false;
-    wxString timeStr = tok.GetNextToken();
-
-    // Get date fields
-    if (!tok.HasMoreTokens()) return false;
-    wxString dayStr = tok.GetNextToken();
-    if (!tok.HasMoreTokens()) return false;
-    wxString monthStr = tok.GetNextToken();
-    if (!tok.HasMoreTokens()) return false;
-    wxString yearStr = tok.GetNextToken();
-
-    if (!yearStr.IsEmpty() && !monthStr.IsEmpty() && !dayStr.IsEmpty()) {
-      year = wxAtoi(yearStr);
-      month = wxAtoi(monthStr);
-      day = wxAtoi(dayStr);
-      // Validate date components
-      if (month < 1 || month > 12 || day < 1 || day > 31 || year < 1980 ||
-          year > 2100) {
-        return false;
-      }
-    }
-
-    // Parse time HHMMSS or HHMMSS.sss (millisecond precision optional)
-    int hour, minute, second, millisecond;
-    if (!parseTimeField(timeStr, &hour, &minute, &second, &millisecond)) {
-      return false;
-    }
-    timestamp->Set(day, static_cast<wxDateTime::Month>(month - 1), year, hour,
-                   minute, second, millisecond);
-    return timestamp->IsValid();
-  }
-
-  return false;
 }
 
 //----------------------------------------------------------------
@@ -1604,10 +1548,13 @@ VDRControl::VDRControl(wxWindow* parent, wxWindowID id, vdr_pi* vdr)
   wxString currentFile = m_pvdr->GetInputFile();
   if (!currentFile.IsEmpty()) {
     // Try to load the file
-    if (m_pvdr->LoadFile(currentFile)) {
+    wxString error;
+    if (m_pvdr->LoadFile(currentFile, &error)) {
+      m_pvdr->ScanFileTimestamps();
       UpdateFileLabel(currentFile);
       UpdateControls();
     } else {
+      wxMessageBox(error, _("VDR Plugin"), wxOK | wxICON_ERROR);
       // If loading fails, clear the saved filename
       m_pvdr->ClearInputFile();
       UpdateFileLabel(wxEmptyString);
@@ -1721,6 +1668,12 @@ void VDRControl::CreateControls() {
   UpdateControls();
 }
 
+void VDRControl::SetSpeedMultiplier(int value) {
+  value = std::max(value, m_speedSlider->GetMin());
+  value = std::min(value, m_speedSlider->GetMax());
+  m_speedSlider->SetValue(value);
+}
+
 void VDRControl::UpdateTimeLabel() {
   if (m_pvdr->GetCurrentTimestamp().IsValid()) {
     wxString timeStr =
@@ -1748,15 +1701,19 @@ void VDRControl::OnLoadButton(wxCommandEvent& event) {
                                             init_directory, _T(""), _T("*.*"));
 
   if (response == wxID_OK) {
-    if (m_pvdr->LoadFile(file)) {  // We'll add this method to vdr_pi
+    wxString error;
+    if (m_pvdr->LoadFile(file, &error)) {
+      m_pvdr->ScanFileTimestamps();
       UpdateFileLabel(file);
       m_progressSlider->SetValue(0);
       UpdateControls();
+    } else {
+      wxMessageBox(error, _("VDR Plugin"), wxOK | wxICON_ERROR);
     }
   }
 }
 
-bool vdr_pi::LoadFile(const wxString& filename) {
+bool vdr_pi::LoadFile(const wxString& filename, wxString* error) {
   if (IsPlaying()) {
     StopPlayback();
   }
@@ -1773,22 +1730,11 @@ bool vdr_pi::LoadFile(const wxString& filename) {
   if (m_istream.IsOpened()) {
     m_istream.Close();
   }
-
   if (!m_istream.Open(m_ifilename)) {
-    wxMessageBox(_("Failed to open file: ") + filename, _("VDR Plugin"),
-                 wxOK | wxICON_ERROR);
+    if (error) {
+      *error = _("Failed to open file: ") + filename;
+    }
     return false;
-  }
-
-  // Try to scan for timestamps
-  if (!ScanFileTimestamps()) {
-    // For CSV files, timestamps should be present.
-    // However, there is a possibility that the file contains non-monotonically
-    // increasing timestamps, in which case we cannot use timestamps for
-    // playback. In this case, we will still allow playback based on line
-    // number.
-    wxLogMessage(
-        "No timestamps found in file - continuing with basic playback");
   }
 
   return true;

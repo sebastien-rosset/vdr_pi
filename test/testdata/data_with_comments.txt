@@ -1,0 +1,8 @@
+
+# VDR file with comments
+
+   
+# First NMEA sentence follows
+$GPRMC,092211.00,A,5759.09700,N,01144.34344,E,5.257,28.27,200715,,,A*58
+# Second NMEA sentence
+$IIRMC,092210,A,5759.095,N,01144.342,E,5.5,31.1,,0.0,E,A*30

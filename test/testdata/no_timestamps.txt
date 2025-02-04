@@ -1,0 +1,7 @@
+# File that does not contain any timestamp.
+$IIRMA,A,5759.095,N,01144.342,E,,,5.5,31.1,0.0,E,A*3A
+$IIMTW,16.8,C*1C
+$IIVLW,2354.92,N,2338.533,N*79
+$IIVHW,,T,25.0,M,5.9,N,10.9,K*78
+!AIVDM,1,1,,B,13u=gHP3CWPlvs2Q8sHW:5fD0h6a,0*1B
+$IIHDG,25.0,0,E,0.0,E*60
