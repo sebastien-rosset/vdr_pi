@@ -410,13 +410,19 @@ void vdr_pi::SetNMEASentence(wxString& sentence) {
   // Check if we need to rotate the VDR file.
   CheckLogRotation();
 
+  wxString normalizedSentence = sentence;
+  normalizedSentence.Trim(true);
+
   switch (m_data_format) {
     case VDRDataFormat::CSV:
-      m_ostream.Write(FormatNMEA0183AsCSV(sentence));
+      m_ostream.Write(FormatNMEA0183AsCSV(normalizedSentence));
       break;
     case VDRDataFormat::RawNMEA:
     default:
-      m_ostream.Write(sentence);
+      if (!normalizedSentence.EndsWith("\r\n")) {
+        normalizedSentence += "\r\n";
+      }
+      m_ostream.Write(normalizedSentence);
       break;
   }
 }
