@@ -23,6 +23,7 @@ find_package(wxWidgets COMPONENTS core base REQUIRED)
 set(SRC
     time_tests.cpp
     plugin_tests.cpp
+    record_tests.cpp
     mock_plugin_api.cpp
     mock_plugin_impl.cpp
     ${CMAKE_SOURCE_DIR}/src/vdr_pi_time.cpp

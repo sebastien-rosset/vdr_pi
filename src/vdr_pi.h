@@ -180,6 +180,8 @@ public:
   void StopPlayback();
   /** Return whether recording is currently active. */
   bool IsRecording() { return m_recording; }
+  /** Return whether recording is currently paused. */
+  bool IsRecordingPaused() { return m_recording_paused; }
   /** Return whether playback is currently active. */
   bool IsPlaying() { return m_playing; }
   /** Return whether the end of the playback file has been reached. */
