@@ -332,11 +332,12 @@ public:
    */
   void SetStopDelay(int minutes) { m_stop_delay = minutes; }
   /**
-   * Check if auto-recording should be started or stopped based on boat speed.
+   * Check if auto-recording should be started or stopped based on speed over
+   * ground.
    *
-   * Starts recording when speed exceeds threshold and stops recording
-   * after configured delay when speed drops below threshold.
-   * @param speed Current boat speed in knots
+   * Starts recording when speed over ground exceeds threshold and stops
+   * recording after configured delay when speed drops below threshold.
+   * @param speed Current speed over ground in knots
    */
   void CheckAutoRecording(double speed);
   /**
@@ -427,8 +428,8 @@ private:
   /**
    * Flag to track if recording is temporarily paused.
    *
-   * This flag is used to pause recording when the boat speed drops below the
-   * threshold and then rises above it again.
+   * This flag is used to pause recording when the speed over ground drops below
+   * the threshold and then rises above it again.
    */
   bool m_recording_paused;
   /** Start time of the current recording session. */
@@ -512,7 +513,7 @@ private:
   bool m_auto_start_recording;
   bool m_use_speed_threshold;  //!< Use speed threshold for auto recording.
   double m_speed_threshold;    //!< Speed threshold for auto recording.
-  double m_last_speed;         //!< Last known boat speed.
+  double m_last_speed;         //!< Last known speed over ground.
   /**
    * Indicate user has manually disabled recording while auto-recording was in
    * progress.
@@ -520,7 +521,8 @@ private:
    * This flag is used to prevent auto-recording from starting again immediately
    * after the user manually stops recording.
    * If the user manually stops recording, auto-recording will only start again
-   * if the boat speed drops below the threshold and then rises above it again.
+   * if the speed over ground drops below the threshold and then rises above it
+   * again.
    */
   bool m_recording_manually_disabled;
   int m_stop_delay;  //!< Minutes to wait before stopping.

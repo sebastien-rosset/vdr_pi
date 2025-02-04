@@ -183,8 +183,8 @@ void VDRPrefsDialog::CreateControls() {
 
   // Speed threshold option
   wxBoxSizer* speedSizer = new wxBoxSizer(wxHORIZONTAL);
-  m_useSpeedThresholdCheck = new wxCheckBox(this, ID_USE_SPEED_THRESHOLD_CHECK,
-                                            _("When boat speed exceeds"));
+  m_useSpeedThresholdCheck = new wxCheckBox(
+      this, ID_USE_SPEED_THRESHOLD_CHECK, _("When speed over ground exceeds"));
   m_useSpeedThresholdCheck->SetValue(m_use_speed_threshold);
   speedSizer->Add(m_useSpeedThresholdCheck, 0, wxALIGN_CENTER_VERTICAL);
 
