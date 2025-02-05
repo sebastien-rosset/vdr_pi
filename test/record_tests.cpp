@@ -177,7 +177,7 @@ TEST(VDRRecordTests, RecordNMEAWithCSV) {
 
   // First line should be header
   wxString line = file.GetFirstLine();
-  EXPECT_EQ(line, "timestamp,type,message") << "Incorrect CSV header";
+  EXPECT_EQ(line, "timestamp,type,id,message") << "Incorrect CSV header";
 
   // Verify each recorded line
   int lineCount = 0;
@@ -212,12 +212,12 @@ TEST(VDRRecordTests, RecordNMEAWithCSV) {
     fields.push_back(currentField);  // Add last field
 
     // Validate we got all fields
-    ASSERT_EQ(fields.size(), 3)
-        << "Expected 3 CSV fields but got " << fields.size();
+    ASSERT_EQ(fields.size(), 4)
+        << "Expected 4 CSV fields but got " << fields.size();
 
     wxString timestamp = fields[0];
     wxString type = fields[1];
-    wxString message = fields[2];
+    wxString message = fields[3];
 
     // Remove surrounding quotes from message if present
     if (message.StartsWith("\"") && message.EndsWith("\"")) {

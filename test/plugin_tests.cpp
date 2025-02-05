@@ -341,6 +341,9 @@ wxArrayString ParseCSVLine(const wxString& line) {
   return fields;
 }
 
+/**
+ * Replay a CSV file that contains valid timestamps and compare with expected.
+ */
 TEST(VDRPluginTests, PlaybackCsvFile) {
   vdr_pi plugin(nullptr);
 
@@ -369,16 +372,19 @@ TEST(VDRPluginTests, PlaybackCsvFile) {
 
   // Skip header
   wxString line = expectedFile.GetFirstLine();
-  ASSERT_TRUE(line.Contains("timestamp,type,message")) << "Missing CSV header";
+  ASSERT_TRUE(line.Contains("timestamp,type,id,message"))
+      << "Missing CSV header";
 
   // Parse CSV content to get NMEA messages
   for (line = expectedFile.GetNextLine(); !expectedFile.Eof();
        line = expectedFile.GetNextLine()) {
     if (!line.IsEmpty()) {
       wxArrayString fields = ParseCSVLine(line);
-      if (fields.size() >= 3) {
+      EXPECT_EQ(fields.size(), 4)
+          << "Expected 4 CSV fields but got " << fields.size();
+      if (fields.size() >= 4) {
         // Get NMEA message and remove quotes
-        wxString message = fields[2].Trim(true).Trim(false);
+        wxString message = fields[3].Trim(true).Trim(false);
         message.Replace("\"", "");
         expected_sentences.push_back(message);
       }
