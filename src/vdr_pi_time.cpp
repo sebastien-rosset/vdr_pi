@@ -108,7 +108,7 @@ void TimestampParser::ApplyCachedDate(NMEATimeInfo& info) const {
 }
 
 bool TimestampParser::ParseIso8601Timestamp(const wxString& timeStr,
-                                            wxDateTime* timestamp) {
+                                            wxDateTime* timestamp) const {
   // Expected format: YYYY-MM-DDThh:mm:ss.sssZ
 
   // Parse the main date/time part using ISO format
@@ -235,10 +235,11 @@ void TimestampParser::Reset() {
   m_useOnlyPrimarySource = false;
 }
 
-wxString TimestampParser::ParseCSVLineTimestamp(const wxString& line,
-                                                unsigned int timestamp_idx,
-                                                unsigned int message_idx,
-                                                wxDateTime* timestamp) {
+bool TimestampParser::ParseCSVLineTimestamp(const wxString& line,
+                                            unsigned int timestamp_idx,
+                                            unsigned int message_idx,
+                                            wxString* message,
+                                            wxDateTime* timestamp) {
   wxArrayString fields;
   wxString currentField;
   bool inQuotes = false;
@@ -271,16 +272,17 @@ wxString TimestampParser::ParseCSVLineTimestamp(const wxString& line,
   if (timestamp && timestamp_idx != static_cast<unsigned int>(-1) &&
       timestamp_idx < fields.GetCount()) {
     if (!ParseIso8601Timestamp(fields[timestamp_idx], timestamp)) {
-      return wxEmptyString;
+      return false;
     }
   }
 
   // Get message field
   if (message_idx == static_cast<unsigned int>(-1) ||
       message_idx >= fields.GetCount()) {
-    return wxEmptyString;
+    return false;
   }
 
   // No need to unescape quotes here as we handled them during parsing
-  return fields[message_idx];
+  *message = fields[message_idx];
+  return true;
 }

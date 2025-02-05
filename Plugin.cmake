@@ -54,8 +54,14 @@ set(SRC
   src/vdr_pi.cpp
   src/vdr_pi_prefs.h
   src/vdr_pi_prefs.cpp
+  src/vdr_pi_control.h
+  src/vdr_pi_control.cpp
+  src/vdr_pi_prefs_net.h
+  src/vdr_pi_prefs_net.cpp
   src/vdr_pi_time.h
   src/vdr_pi_time.cpp
+  src/vdr_network.h
+  src/vdr_network.cpp
 )
 
 

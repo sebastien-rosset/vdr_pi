@@ -84,7 +84,8 @@ public:
    * @param timestamp Output timestamp in UTC.
    * @return True if the timestamp was successfully parsed.
    */
-  bool ParseIso8601Timestamp(const wxString& timeStr, wxDateTime* timestamp);
+  bool ParseIso8601Timestamp(const wxString& timeStr,
+                             wxDateTime* timestamp) const;
 
   // Reset the cached date state
   void Reset();
@@ -106,13 +107,13 @@ public:
    * @param line CSV line to parse.
    * @param timestamp_idx Index of the timestamp field.
    * @param message_idx Index of the message field.
+   * @param message Output message field.
    * @param timestamp Output timestamp.
-   * @return The message field.
+   * @return True if the timestamp was successfully parsed.
    */
-  wxString ParseCSVLineTimestamp(const wxString& line,
-                                 unsigned int timestamp_idx,
-                                 unsigned int message_idx,
-                                 wxDateTime* timestamp);
+  bool ParseCSVLineTimestamp(const wxString& line, unsigned int timestamp_idx,
+                             unsigned int message_idx, wxString* message,
+                             wxDateTime* timestamp);
 
 private:
   // Cache the last valid date seen from NMEA sentences (RMC, ZDA...)

@@ -18,7 +18,7 @@ endif ()
 
 # Find required packages
 find_package(GTest REQUIRED)
-find_package(wxWidgets COMPONENTS core base REQUIRED)
+find_package(wxWidgets COMPONENTS core base net REQUIRED)
 
 set(SRC
     time_tests.cpp
@@ -29,6 +29,9 @@ set(SRC
     ${CMAKE_SOURCE_DIR}/src/vdr_pi_time.cpp
     ${CMAKE_SOURCE_DIR}/src/vdr_pi.cpp
     ${CMAKE_SOURCE_DIR}/src/vdr_pi_prefs.cpp
+    ${CMAKE_SOURCE_DIR}/src/vdr_pi_prefs_net.cpp
+    ${CMAKE_SOURCE_DIR}/src/vdr_pi_control.cpp
+    ${CMAKE_SOURCE_DIR}/src/vdr_network.cpp
     ${CMAKE_SOURCE_DIR}/src/icons.cpp
 )
 

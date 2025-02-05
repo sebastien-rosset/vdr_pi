@@ -288,11 +288,12 @@ TEST_F(VDRTimeTest, CSVParsingISO8601) {
   wxDateTime timestamp;
   wxString msg =
       "$GPRMC,123519,A,4807.038,N,01131.000,E,022.4,084.4,230394,003.1,W*6A";
-
-  EXPECT_EQ(parser.ParseCSVLineTimestamp(
-                wxString::Format("2024-01-30T12:34:56.123Z,\"%s\"", msg), 0, 1,
-                &timestamp),
-            msg);
+  wxString nmea;
+  bool success = parser.ParseCSVLineTimestamp(
+      wxString::Format("2024-01-30T12:34:56.123Z,\"%s\"", msg), 0, 1, &nmea,
+      &timestamp);
+  EXPECT_TRUE(success);
+  EXPECT_EQ(nmea, msg);
   EXPECT_EQ(timestamp.GetYear(), 2024);
   EXPECT_EQ(timestamp.GetMonth(), wxDateTime::Jan);
   EXPECT_EQ(timestamp.GetDay(), 30);
@@ -301,10 +302,11 @@ TEST_F(VDRTimeTest, CSVParsingISO8601) {
   EXPECT_EQ(timestamp.GetSecond(), 56);
   EXPECT_EQ(timestamp.GetMillisecond(), 123);
 
-  EXPECT_EQ(parser.ParseCSVLineTimestamp(
-                wxString::Format("2024-01-30T12:34:56Z,\"%s\"", msg), 0, 1,
-                &timestamp),
-            msg);
+  success = parser.ParseCSVLineTimestamp(
+      wxString::Format("2024-01-30T12:34:56Z,\"%s\"", msg), 0, 1, &nmea,
+      &timestamp);
+  EXPECT_TRUE(success);
+  EXPECT_EQ(nmea, msg);
   EXPECT_EQ(timestamp.GetYear(), 2024);
   EXPECT_EQ(timestamp.GetMonth(), wxDateTime::Jan);
   EXPECT_EQ(timestamp.GetDay(), 30);

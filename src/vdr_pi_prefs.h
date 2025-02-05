@@ -34,6 +34,7 @@
 #include <wx/spinctrl.h>
 
 #include "vdr_pi.h"
+#include "vdr_pi_prefs_net.h"
 
 /**
  * Preferences dialog for configuring VDR settings.
@@ -108,12 +109,24 @@ private:
   /** Handle speed threshold checkbox changes. */
   void OnUseSpeedThresholdCheck(wxCommandEvent& event);
 
+  /** Handle protocol checkbox changes. */
+  void OnProtocolCheck(wxCommandEvent& event);
+
+  void OnNMEA0183ReplayModeChanged(wxCommandEvent& event);
+
   /** Update enabled state of dependent controls. */
   void UpdateControlStates();
 
   /** Create and layout dialog controls. */
   void CreateControls();
 
+  /** Create controls for recording settings tab */
+  wxPanel* CreateRecordingTab(wxWindow* parent);
+
+  /** Create controls for replay settings tab */
+  wxPanel* CreateReplayTab(wxWindow* parent);
+
+  // Recording tab controls
   wxRadioButton* m_nmeaRadio;           //!< Raw NMEA format selection
   wxRadioButton* m_csvRadio;            //!< CSV format selection
   wxTextCtrl* m_dirCtrl;                //!< Recording directory display
@@ -132,6 +145,18 @@ private:
   wxCheckBox* m_nmea2000Check;  //!< Enable NMEA 2000 recording
 #if 0
    wxCheckBox* m_signalKCheck;      //!< Enable Signal K recording
+#endif
+
+  // Replay tab controls
+  // NMEA 0183 replay mode
+  wxRadioButton* m_nmea0183NetworkRadio;
+  wxRadioButton* m_nmea0183InternalRadio;
+
+  // Network selection
+  ConnectionSettingsPanel* m_nmea0183NetPanel;
+  ConnectionSettingsPanel* m_nmea2000NetPanel;
+#if 0
+  ConnectionSettingsPanel* m_signalKNetPanel;
 #endif
 
   VDRDataFormat m_format;       //!< Selected data format
