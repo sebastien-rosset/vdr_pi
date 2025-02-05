@@ -30,6 +30,8 @@
 #include <map>
 #include <typeinfo>
 #include <algorithm>
+#include <cstring>
+#include <cstdint>
 
 #include "ocpn_plugin.h"
 #include "vdr_pi_prefs.h"
@@ -231,9 +233,8 @@ void vdr_pi::UpdateNMEA2000Listeners() {
   wxLogMessage("Configuring NMEA 2000 listeners. NMEA 2000 enabled: %d",
                m_protocols.nmea2000);
   if (m_protocols.nmea2000) {
-    // The plugin API 1.19 is not available on Android.
-    // When it is available, the ifndef condition can be removed.
     std::map<unsigned int, wxString> parameterGroupNumbers = {
+        // System & ISO messages
         {59392, "ISO Acknowledgement"},
         {59904, "ISO Request"},
         {60160, "ISO Transport Protocol, Data Transfer"},
@@ -241,27 +242,56 @@ void vdr_pi::UpdateNMEA2000Listeners() {
         {60928, "ISO Address Claim"},
         {61184, "Manufacturer Proprietary Single Frame"},
         {65280, "Manufacturer Proprietary Single Frame"},
-        {65305,
-         "Manufacturer Proprietary Single Frame (B&G AC12 Autopilot Status)"},
-        {65309,
-         "Manufacturer Proprietary Single Frame (B&G WS320 Battery Status)"},
-        {65312,
-         "Manufacturer Proprietary Single Frame (B&G WS320 Wireless Status)"},
-        {65340,
-         "Manufacturer Proprietary Single Frame (B&G AC12 Autopilot Mode)"},
-        {65341, "Manufacturer Proprietary Single Frame (B&G AC12 Wind Angle)"},
+
+        // B&G Proprietary
+        {65305, "B&G AC12 Autopilot Status"},
+        {65309, "B&G WS320 Wind Sensor Battery Status"},
+        {65312, "B&G WS320 Wind Sensor Wireless Status"},
+        {65340, "B&G AC12 Autopilot Mode"},
+        {65341, "B&G AC12 Wind Angle"},
+
+        // Time & Navigation
+        {126992, "System Time"},
+        {127233, "MOB (Man Overboard) Data"},
+        {127237, "Heading/Track Control"},
         {127245, "Rudder Angle"},
         {127250, "Vessel Heading"},
-        {127257, "Attitude (Roll and Pitch)"},
+        {127251, "Rate of Turn"},
+        {127252, "Heave"},
+        {127257, "Vessel Attitude (Roll/Pitch)"},
+        {127258, "Magnetic Variation"},
         {128259, "Speed Through Water"},
-        {128267, "Water Depth"},
-        {128275, "Distance Log"},
-        {128777, "Windlass Status"},
+        {128267, "Water Depth Below Transducer"},
+        {128275, "Distance Log (Total/Trip)"},
+        {128777, "Anchor Windlass Status"},
+        {129025, "Position Rapid Update (Lat/Lon)"},
+        {129026, "Course/Speed Over Ground (COG/SOG)"},
         {129029, "GNSS Position Data"},
+        {129283, "Cross Track Error"},
+        {129284, "Navigation Data (WP Info)"},
+        {129285, "Navigation Route/WP Info"},
         {129540, "GNSS Satellites in View"},
-        {130306, "Wind Data"},
-        {130310, "Environmental Parameters"},
-        {130313, "Environmental Parameters"}};
+        {130577, "Direction Data (Set/Drift)"},
+
+        // AIS
+        {129038, "AIS Class A Position Report"},
+        {129039, "AIS Class B Position Report"},
+        {129793, "AIS UTC and Date Report"},
+        {129794, "AIS Class A Static Data"},
+        {129798, "AIS SAR Aircraft Position"},
+        {129802, "AIS Safety Broadcast"},
+
+        // Environmental & Systems
+        {127488, "Engine Parameters, Rapid"},
+        {127489, "Engine Parameters, Dynamic"},
+        {127505, "Fluid Level"},
+        {127508, "Battery Status"},
+        {130306, "Wind Speed/Angle"},
+        {130310, "Environmental Parameters (Air/Water)"},
+        {130311, "Environmental Parameters (Alt Format)"},
+        {130313, "Humidity"},
+        {130314, "Actual Pressure"},
+        {130316, "Temperature Extended Range"}};
 
     for (const auto& it : parameterGroupNumbers) {
       m_n2k_listeners.push_back(
@@ -287,6 +317,17 @@ void vdr_pi::OnSignalKEvent(wxCommandEvent& event) {
   // TODO: Implement SignalK recording.
 }
 
+// Helper function to convert little-endian bytes to float
+inline float N2KToFloat(const uint8_t* data) {
+  float result;
+  uint32_t temp = (static_cast<uint32_t>(data[0])) |
+                  (static_cast<uint32_t>(data[1]) << 8) |
+                  (static_cast<uint32_t>(data[2]) << 16) |
+                  (static_cast<uint32_t>(data[3]) << 24);
+  std::memcpy(&result, &temp, sizeof(float));
+  return result;
+}
+
 void vdr_pi::OnN2KEvent(wxCommandEvent& event) {
   if (!m_protocols.nmea2000) {
     // NMEA 2000 recording is disabled.
@@ -297,18 +338,19 @@ void vdr_pi::OnN2KEvent(wxCommandEvent& event) {
   // Get PGN from event
   NMEA2000Id id(ev.GetId());
 
-  // Check for Speed Through Water PGN (128259)
-  if (id.id == 128259) {
+  // Check for COG & SOG, Rapid Update PGN (129026)
+  if (id.id == 129026) {
     // Get binary payload
     std::vector<uint8_t> payload = GetN2000Payload(id, ev);
 
-    // Speed Through Water message format:
-    // Byte 0-1: SID and reserved
-    // Byte 2-5: Speed Through Water (float, knots)
-    if (payload.size() >= 6) {
-      // Extract speed value (float, 4 bytes, little-endian)
-      float speed;
-      memcpy(&speed, &payload[2], 4);
+    // COG & SOG message format:
+    // Byte 0: SID
+    // Byte 1: COG Reference (0=True, 1=Magnetic)
+    // Byte 2-5: COG (float, radians)
+    // Byte 6-9: SOG (float, knots)
+    if (payload.size() >= 10) {
+      // Extract SOG value (float, 4 bytes, little-endian)
+      float speed = N2KToFloat(&payload[6]);
 
       // Convert to double for consistency with NMEA 0183 handling
       double speed_knots = static_cast<double>(speed);
@@ -320,6 +362,7 @@ void vdr_pi::OnN2KEvent(wxCommandEvent& event) {
       CheckAutoRecording(speed_knots);
     }
   }
+
   if (!m_recording) {
     return;
   }
