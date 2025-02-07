@@ -41,7 +41,11 @@ TEST(VDRPluginTests, ScanTimestampsBasic) {
   ASSERT_TRUE(plugin.LoadFile(testfile)) << "Failed to load test file";
 
   // Test scanning timestamps
-  EXPECT_TRUE(plugin.ScanFileTimestamps()) << "Failed to scan timestamps";
+  bool hasValidTimestamps;
+  wxString error;
+  EXPECT_TRUE(plugin.ScanFileTimestamps(hasValidTimestamps, error))
+      << wxString::Format("Failed to scan timestamps: %s", error);
+  EXPECT_TRUE(hasValidTimestamps) << "Failed to scan timestamps";
 
   // Check we have valid timestamps
   EXPECT_TRUE(plugin.HasValidTimestamps())
@@ -80,7 +84,11 @@ TEST(VDRPluginTests, ProgressFractionNoPlayback) {
   // Test loading a valid file
   wxString testfile = wxString(TESTDATA) + wxString("/hakan.txt");
   ASSERT_TRUE(plugin.LoadFile(testfile)) << "Failed to load test file";
-  ASSERT_TRUE(plugin.ScanFileTimestamps()) << "Failed to scan timestamps";
+  bool hasValidTimestamps;
+  wxString error;
+  ASSERT_TRUE(plugin.ScanFileTimestamps(hasValidTimestamps, error))
+      << wxString::Format("Failed to scan timestamps: %s", error);
+  EXPECT_TRUE(hasValidTimestamps) << "Failed to scan timestamps";
 
   // Verify progress fraction starts at 0
   EXPECT_DOUBLE_EQ(plugin.GetProgressFraction(), 0.0)
@@ -101,8 +109,9 @@ TEST(VDRPluginTests, LoadFileErrors) {
   wxString error;
   EXPECT_FALSE(plugin.LoadFile("nonexistent.txt", &error))
       << "Should fail with non-existent file";
-  EXPECT_FALSE(plugin.ScanFileTimestamps())
-      << "Should fail when no file is loaded";
+  bool hasValidTimestamps;
+  EXPECT_FALSE(plugin.ScanFileTimestamps(hasValidTimestamps, error))
+      << "ScanFileTimestamps should fail when no file is loaded";
 }
 
 TEST(VDRPluginTests, HandleFileWithoutTimestamps) {
@@ -113,7 +122,12 @@ TEST(VDRPluginTests, HandleFileWithoutTimestamps) {
   ASSERT_TRUE(plugin.LoadFile(testfile)) << "Failed to load test file";
 
   // Test scanning timestamps - should succeed but find no timestamps
-  EXPECT_TRUE(plugin.ScanFileTimestamps()) << "Failed to scan timestamps";
+  bool hasValidTimestamps;
+  wxString error;
+  EXPECT_TRUE(plugin.ScanFileTimestamps(hasValidTimestamps, error))
+      << wxString::Format("Failed to scan timestamps: %s", error);
+  EXPECT_FALSE(hasValidTimestamps) << "File should not have timestamps";
+  EXPECT_EQ(error, wxEmptyString) << "Unexpected error message";
 
   // Should report no valid timestamps
   EXPECT_FALSE(plugin.HasValidTimestamps())
@@ -154,7 +168,12 @@ TEST(VDRPluginTests, PlaybackNoTimestamps) {
   // Load test file without timestamps
   wxString testfile = wxString(TESTDATA) + wxString("/no_timestamps.txt");
   ASSERT_TRUE(plugin.LoadFile(testfile)) << "Failed to load test file";
-  ASSERT_TRUE(plugin.ScanFileTimestamps()) << "Failed to scan timestamps";
+  bool hasValidTimestamps;
+  wxString error;
+  ASSERT_TRUE(plugin.ScanFileTimestamps(hasValidTimestamps, error))
+      << wxString::Format("Failed to scan timestamps: %s", error);
+  EXPECT_FALSE(hasValidTimestamps) << "File should not have timestamps";
+  EXPECT_EQ(error, wxEmptyString) << "Unexpected error message";
 
   // Verify no timestamps found
   EXPECT_FALSE(plugin.HasValidTimestamps())
@@ -176,10 +195,13 @@ TEST(VDRPluginTests, PlaybackNoTimestamps) {
   expectedFile.Close();
 
   // Start playback
+  wxLogMessage("PlaybackNoTimestamps test: Starting playback");
   plugin.StartPlayback();
 
   // Give some time for playback to process
   wxMilliSleep(500);
+
+  wxLogMessage("PlaybackNoTimestamps test: Stopping playback");
 
   // Stop playback
   plugin.StopPlayback();
@@ -198,6 +220,7 @@ TEST(VDRPluginTests, PlaybackNoTimestamps) {
       << "Expected " << expected_sentences.size() << " sentences but got "
       << sentences.size();
 
+  wxLogMessage("Expected sentences: %d", expected_sentences.size());
   // Verify each sentence
   for (size_t i = 0; i < std::min(sentences.size(), expected_sentences.size());
        i++) {
@@ -206,7 +229,9 @@ TEST(VDRPluginTests, PlaybackNoTimestamps) {
   }
 
   // Clean up
+  wxLogMessage("PlaybackNoTimestamps test complete. Calling DeInit()");
   plugin.DeInit();
+  wxLogMessage("PlaybackNoTimestamps test complete");
 }
 
 /** Replay a file that contains valid timestamps. */
@@ -222,7 +247,12 @@ TEST(VDRPluginTests, PlaybackTimestamps) {
   // Load test file without timestamps
   wxString testfile = wxString(TESTDATA) + wxString("/with_timestamps.txt");
   ASSERT_TRUE(plugin.LoadFile(testfile)) << "Failed to load test file";
-  ASSERT_TRUE(plugin.ScanFileTimestamps()) << "Failed to scan timestamps";
+  bool hasValidTimestamps;
+  wxString error;
+  ASSERT_TRUE(plugin.ScanFileTimestamps(hasValidTimestamps, error))
+      << wxString::Format("Failed to scan timestamps: %s", error);
+  EXPECT_TRUE(hasValidTimestamps) << "Failed to scan timestamps";
+  EXPECT_EQ(error, wxEmptyString) << "Unexpected error message";
 
   // Verify timestamps found
   EXPECT_TRUE(plugin.HasValidTimestamps())
@@ -323,7 +353,12 @@ TEST(VDRPluginTests, PlaybackCsvFile) {
   // Load test CSV file
   wxString testfile = wxString(TESTDATA) + wxString("/test_recording.csv");
   ASSERT_TRUE(plugin.LoadFile(testfile)) << "Failed to load test file";
-  ASSERT_TRUE(plugin.ScanFileTimestamps()) << "Failed to scan timestamps";
+  bool hasValidTimestamps;
+  wxString error;
+  ASSERT_TRUE(plugin.ScanFileTimestamps(hasValidTimestamps, error))
+      << wxString::Format("Failed to scan timestamps: %s", error);
+  EXPECT_TRUE(hasValidTimestamps) << "Failed to scan timestamps";
+  EXPECT_EQ(error, wxEmptyString) << "Unexpected error message";
 
   // Read expected sentences from CSV file
   wxTextFile expectedFile;
@@ -416,7 +451,12 @@ TEST(VDRPluginTests, PlaybackNonChronologicalTimestamps) {
 
   wxString testfile = wxString(TESTDATA) + wxString("/not_chronological.txt");
   ASSERT_TRUE(plugin.LoadFile(testfile)) << "Failed to load test file";
-  ASSERT_TRUE(plugin.ScanFileTimestamps()) << "Failed to scan timestamps";
+  bool hasValidTimestamps;
+  wxString error;
+  ASSERT_TRUE(plugin.ScanFileTimestamps(hasValidTimestamps, error))
+      << wxString::Format("Failed to scan timestamps: %s", error);
+  EXPECT_TRUE(hasValidTimestamps) << "Failed to scan timestamps";
+  EXPECT_EQ(error, wxEmptyString) << "Unexpected error message";
 
   // Verify no timestamps were found, because none of the time sources are
   // in chronological order.
@@ -506,7 +546,17 @@ TEST(VDRPluginTests, TestRealRecordings) {
     SCOPED_TRACE("Testing " + test.filename);
 
     ASSERT_TRUE(plugin.LoadFile(testfile));
-    EXPECT_EQ(plugin.ScanFileTimestamps(), test.expectedScanResult);
+    bool hasValidTimestamps;
+    wxString error;
+    EXPECT_EQ(plugin.ScanFileTimestamps(hasValidTimestamps, error),
+              test.expectedScanResult)
+        << wxString::Format("Failed to scan timestamps: %s", error);
+    if (test.expectedScanResult) {
+      EXPECT_EQ(error, wxEmptyString);
+      EXPECT_TRUE(hasValidTimestamps);
+    } else {
+      EXPECT_NE(error, wxEmptyString);
+    }
     EXPECT_EQ(plugin.HasValidTimestamps(), test.expectedValidTimestamps);
 
     const auto& timeSources = plugin.GetTimeSources();

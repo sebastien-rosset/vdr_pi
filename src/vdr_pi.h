@@ -30,6 +30,7 @@
 #define _VDRPI_H_
 
 #include <deque>
+#include <map>
 
 #include "wx/wxprec.h"
 
@@ -45,6 +46,7 @@
 
 #include "ocpn_plugin.h"
 #include "vdr_pi_time.h"
+#include "vdr_network.h"
 #include "config.h"
 
 #define VDR_TOOL_POSITION -1  // Request default positioning of toolbar tool
@@ -67,6 +69,22 @@ enum class VDRDataFormat {
         // Future formats can be added here
 };
 
+enum class NMEA0183ReplayMode {
+  NETWORK,      // Use network connection
+  INTERNAL_API  // Use PushNMEABuffer()
+};
+
+/**
+ * Network settings for protocol output.
+ */
+struct ConnectionSettings {
+  bool enabled;  //!< Enable network output
+  bool useTCP;   //!< Use TCP (true) or UDP (false)
+  int port;      //!< Network port number
+
+  ConnectionSettings() : enabled(false), useTCP(true), port(10111) {}
+};
+
 /**
  * Protocol recording configuration settings.
  *
@@ -74,9 +92,17 @@ enum class VDRDataFormat {
  * Multiple protocols can be enabled simultaneously.
  */
 struct VDRProtocolSettings {
-  bool nmea0183;  //!< Enable NMEA 0183 sentence recording
-  bool nmea2000;  //!< Enable NMEA 2000 PGN message recording
-  bool signalK;   //!< Enable Signal K data recording
+  bool nmea0183;                   //!< Enable NMEA 0183 sentence recording
+  bool nmea2000;                   //!< Enable NMEA 2000 PGN message recording
+  bool signalK;                    //!< Enable Signal K data recording
+  ConnectionSettings nmea0183Net;  //!< NMEA 0183 connection settings
+  ConnectionSettings n2kNet;       //!< NMEA 2000 connection settings
+  ConnectionSettings signalKNet;   //!< Signal K connection settings
+
+  NMEA0183ReplayMode nmea0183ReplayMode =
+      NMEA0183ReplayMode::INTERNAL_API;  //!< NMEA 0183 replay method
+
+  VDRProtocolSettings() : nmea0183(true), nmea2000(false), signalK(false) {}
 };
 
 /**
@@ -188,9 +214,24 @@ public:
   bool IsAtFileEnd() const { return m_atFileEnd; }
   void ResetEndOfFile() { m_atFileEnd = false; }
   /**
-   * Return the date/time the next message should be played.
+   * Calculate when the current NMEA/SignalK message should be played during
+   * replay.
    *
-   * The time is relative to the computer clock.
+   * This function determines the exact time when the current message should be
+   * displayed, accounting for the playback speed multiplier. The time returned
+   * is in terms of the computer's clock, not the original message timestamps.
+   *
+   * The calculation works by:
+   * 1. Finding how much time elapsed between the first message and current
+   * message
+   * 2. Scaling this elapsed time based on the playback speed (e.g. half time at
+   * 2x speed)
+   * 3. Adding the scaled time to when playback started
+   *
+   * @return wxDateTime When to play the current message, relative to system
+   * time. Returns invalid wxDateTime if any required timestamps are invalid.
+   *
+   * @see GetSpeedMultiplier() - Controls how fast messages are replayed
    */
   wxDateTime GetNextPlaybackTime() const;
 
@@ -255,9 +296,12 @@ public:
    *
    * Analyzes file to determine if it contains valid timestamps and stores
    * first/last timestamps if found. Required for proper playback timing.
-   * @return True if valid timestamps found
+   *
+   * @param hasValidTimestamps True if valid timestamps found in file
+   * @param error Error message if an error occurs during scan.
+   * @return True if scan completed successfully, false if error occurred.
    */
-  bool ScanFileTimestamps();
+  bool ScanFileTimestamps(bool& hasValidTimestamps, wxString& error);
   /**
    * Seek playback position to specified fraction of file.
    *
@@ -341,17 +385,17 @@ public:
    */
   void CheckAutoRecording(double speed);
   /**
-   * Check if current file contains valid message timestamps.
+   * Check if current file contains at least one time source with valid message
+   * timestamps.
    *
-   * File must have monotonically increasing timestamps for
+   * The time source must have monotonically increasing timestamps for
    * timestamp-based playback.
    */
   bool HasValidTimestamps() const;
-  const wxString& GetFileStatus() const { return m_fileStatus; }
 
   /** Helper function to extract NMEA sentence components. */
-  bool ParseNMEAComponents(const wxString& nmea, wxString* talkerId,
-                           wxString* sentenceId);
+  bool ParseNMEAComponents(const wxString nmea, wxString& talkerId,
+                           wxString& sentenceId, bool& hasTimestamp) const;
 
   /** Helper to flush the sentence buffer to NMEA stream. */
   void FlushSentenceBuffer();
@@ -379,6 +423,35 @@ public:
     return m_timeSources;
   }
 
+  /**
+   * Format an NMEA 2000 message based on current format
+   *
+   * @param pgn PGN number
+   * @param source Source address
+   * @param payload Raw message payload as hex string
+   * @return Formatted message
+   */
+  static wxString FormatN2KMessage(int pgn, const wxString& source,
+                                   const wxString& payload);
+
+  /**
+   * Get the ConnectionSettings structure for a specific protocol.
+   *
+   * @param protocol Which protocol's settings to return
+   * @return Network settings for the specified protocol
+   */
+  const ConnectionSettings& GetNetworkSettings(const wxString& protocol) const;
+
+  /**
+   * Process a protocol message for playback.
+   * Handles sending via appropriate network server if enabled.
+   *
+   * @param protocol Protocol type ("NMEA0183", "N2K", "SignalK")
+   * @param message The message to process
+   * @return True if message was processed successfully
+   */
+  bool PlaybackMessage(const wxString& protocol, const wxString& message);
+
 private:
   class TimerHandler : public wxTimer {
   public:
@@ -393,7 +466,8 @@ private:
   wxString FormatNMEA0183AsCSV(const wxString& nmea);
   bool ParseCSVHeader(const wxString& header);
   /** Parse timestamp from a CSV line or raw NMEA sentence. */
-  wxString ParseCSVLineTimestamp(const wxString& line, wxDateTime* timestamp);
+  bool ParseCSVLineTimestamp(const wxString& line, wxString* messages,
+                             wxDateTime* timestamp);
   /** Return true if the message is a NMEA0183 or AIS message */
   bool IsNMEA0183OrAIS(const wxString& message);
   /** Update SignalK event listeners when preferences are changed. */
@@ -408,6 +482,95 @@ private:
 
   /** Helper to select the best primary time source. */
   void SelectPrimaryTimeSource();
+
+  /**
+   * Get or create network server for a protocol.
+   *
+   * @param protocol Protocol identifier
+   * @return Pointer to server instance
+   */
+  VDRNetworkServer* GetServer(const wxString& protocol);
+
+  /**
+   * Parse a PCDIN message into its components
+   * Format: $PCDIN,<pgn>,<timestamp>,<src>,<data>
+   *
+   * @param message PCDIN message to parse
+   * @param pgn [out] PGN number
+   * @param source [out] Source address
+   * @param payload [out] Message payload
+   * @return True if parsing successful
+   */
+  bool ParsePCDINMessage(const wxString& message, int& pgn, wxString& source,
+                         wxString& payload);
+
+  /**
+   * Helper to extract PGN from NMEA 2000 message in any supported format.
+   *
+   * @param message NMEA 2000 message to parse
+   * @return PGN number or 0 if not recognized
+   */
+  int ExtractPGN(const wxString& message);
+
+  /**
+   * Initialize or update network servers based on current preferences.
+   *
+   * This function manages the lifecycle of NMEA0183 and NMEA2000 network
+   * servers. For each protocol:
+   * - If enabled in preferences, starts or reconfigures the server as needed
+   * - If disabled in preferences, stops any running server
+   * - Only reconfigures servers when settings have changed (protocol or port)
+   *
+   * The function is typically called when:
+   * - Starting playback
+   * - After preferences are updated
+   * - When reconnection is needed
+   *
+   * @return true if all enabled servers were started successfully, false if any
+   * server failed
+   * @note: Returns true if a server is disabled (not an error condition)
+   */
+  bool InitializeNetworkServers();
+  /**
+   * Stop all running network servers.
+   *
+   * This function performs a clean shutdown of all network servers:
+   * - Stops the NMEA0183 server if running
+   * - Stops the NMEA2000 server if running
+   * - Closes all client connections
+   * - Logs the shutdown of each server
+   *
+   * The function is typically called when:
+   * - Stopping playback
+   * - Shutting down the plugin
+   * - Before reconfiguring servers
+   *
+   * @note: This function is safe to call even if servers are not running
+   */
+  void StopNetworkServers();
+  /**
+   * Process and send data through appropriate network servers during playback.
+   *
+   * This function handles the routing of NMEA messages to the appropriate
+   * network server based on message type and protocol settings. It supports:
+   *
+   * NMEA0183:
+   * - Messages starting with '$' or '!'
+   * - Only sends if NMEA0183 networking is enabled
+   *
+   * NMEA2000:
+   * - SeaSmart format ($PCDIN)
+   * - Actisense ASCII format (!AIVDM)
+   * - MiniPlex format ($MXPGN)
+   * - YD RAW format ($YDRAW)
+   * - Only sends if NMEA2000 networking is enabled
+   *
+   * @param data The NMEA message to send
+   *        Each message should be a complete NMEA sentence including any line
+   * endings
+   *
+   */
+  void HandleNetworkPlayback(const wxString& data);
 
   int m_tb_item_id_record;
   int m_tb_item_id_play;
@@ -445,6 +608,9 @@ private:
   VDRDataFormat m_data_format;
   /** Active protocol recording settings. */
   VDRProtocolSettings m_protocols;
+
+  /** Network servers for each protocol */
+  std::map<wxString, std::unique_ptr<VDRNetworkServer>> m_networkServers;
 
   /** Input file stream for playback. */
   wxTextFile m_istream;
@@ -489,11 +655,17 @@ private:
   int m_log_rotate_interval;
   /** When current recording started. */
   wxDateTime m_recording_start;
-  /**  Real time when playback started. */
+  /**
+   * System time when VDR playback was started.
+   *
+   * Used as the reference point for calculating when each message should be
+   * played. All playback times are calculated as an offset from this timestamp.
+   */
   wxDateTime m_playback_base_time;
-
-  /** The first (earliest) timestamp from the primary time source in the VDR
-   * file. */
+  /**
+   * The first (earliest) timestamp from the primary time source in the VDR
+   * file.
+   */
   wxDateTime m_firstTimestamp;
   /** The last timestamp from the primary time source in the VDR file. */
   wxDateTime m_lastTimestamp;
@@ -528,7 +700,6 @@ private:
   int m_stop_delay;  //!< Minutes to wait before stopping.
   /** When speed first dropped below threshold. */
   wxDateTime m_below_threshold_since;
-  wxString m_fileStatus;
 
   /**
    * Maximum number of NMEA sentences to retain until messages are dropped
@@ -563,119 +734,6 @@ private:
   wxString m_temp_outfile;
   wxString m_final_outfile;
 #endif
-};
-
-/**
- * UI control panel for VDR playback functionality.
- *
- * Provides controls for loading VDR files, starting/pausing playback,
- * adjusting playback speed, and monitoring playback progress.
- */
-class VDRControl : public wxWindow {
-public:
-  /**
-   * Create a new VDR control panel.
-   *
-   * Initializes UI elements and loads any previously configured VDR file.
-   * @param pparent Parent window for the control panel
-   * @param id Window identifier
-   * @param vdr Owner VDR plugin instance
-   */
-  VDRControl(wxWindow* pparent, wxWindowID id, vdr_pi* vdr);
-
-  /**
-   * Update UI elements for color scheme changes.
-   * @param cs New color scheme to apply
-   */
-  void SetColorScheme(PI_ColorScheme cs);
-
-  /**
-   * Update progress indication for playback position.
-   * @param fraction Current position as fraction between 0-1
-   */
-  void SetProgress(double fraction);
-
-  /** Update state of UI controls based on playback status. */
-  void UpdateControls();
-
-  /**
-   * Update displayed filename in UI.
-   * @param filename Path of currently loaded file
-   */
-  void UpdateFileLabel(const wxString& filename);
-
-  /** Update displayed timestamp in UI based on current playback position. */
-  void UpdateTimeLabel();
-
-  /** Get current playback speed multiplier setting. */
-  int GetSpeedMultiplier() const { return m_speedSlider->GetValue(); }
-
-  /** Set the speed multiplier settting. */
-  void SetSpeedMultiplier(int value);
-
-private:
-  /** Create and layout UI controls. */
-  void CreateControls();
-
-  /**
-   * Handle file load button clicks.
-   *
-   * Shows file selection dialog and loads selected VDR file.
-   */
-  void OnLoadButton(wxCommandEvent& event);
-
-  /**
-   * Handle play/pause button clicks.
-   *
-   * Toggles between playback and paused states.
-   */
-  void OnPlayPauseButton(wxCommandEvent& event);
-
-  /**
-   * Handle playback speed adjustment.
-   *
-   * Updates playback timing when speed multiplier changes.
-   */
-  void OnSpeedSliderUpdated(wxCommandEvent& event);
-
-  /**
-   * Handle progress slider dragging.
-   *
-   * Temporarily pauses playback while user drags position slider.
-   */
-  void OnProgressSliderUpdated(wxScrollEvent& even);
-
-  /**
-   * Handle progress slider release.
-   *
-   * Seeks to new position and resumes playback if previously playing.
-   */
-  void OnProgressSliderEndDrag(wxScrollEvent& event);
-
-  /** Handle data format selection changes. */
-  void OnDataFormatRadioButton(wxCommandEvent& event);
-
-  /** Handle left-click on Settings button. */
-  void OnSettingsButton(wxCommandEvent& event);
-
-  wxButton* m_loadBtn;         //!< Button to load VDR file
-  wxButton* m_settingsBtn;     //!< Button to open settings dialog
-  wxButton* m_playPauseBtn;    //!< Toggle button for play/pause
-  wxString m_playBtnTooltip;   //!< Tooltip text for play state
-  wxString m_pauseBtnTooltip;  //!< Tooltip text for pause state
-  wxString m_stopBtnTooltip;   //!< Tooltip text for stop state
-
-  wxSlider* m_speedSlider;      //!< Slider control for playback speed
-  wxSlider* m_progressSlider;   //!< Slider control for playback position
-  wxStaticText* m_fileLabel;    //!< Label showing current filename
-  wxStaticText* m_timeLabel;    //!< Label showing current timestamp
-  wxStaticText* m_statusLabel;  //!< Label showing info/error message
-  vdr_pi* m_pvdr;               //!< Owner plugin instance
-
-  bool m_isDragging;            //!< Flag indicating progress slider drag
-  bool m_wasPlayingBeforeDrag;  //!< Playback state before drag started
-
-  DECLARE_EVENT_TABLE()
 };
 
 #endif
