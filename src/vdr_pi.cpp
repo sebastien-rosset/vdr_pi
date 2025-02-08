@@ -323,7 +323,22 @@ void vdr_pi::OnSignalKEvent(wxCommandEvent& event) {
   // TODO: Implement SignalK recording.
 }
 
-// Helper function to convert little-endian bytes to float
+/**
+ * Converts 4 bytes of NMEA 2000 data to a 32-bit IEEE 754 floating point number
+ *
+ * @param data Pointer to bytes in the NMEA 2000 message (4 bytes,
+ * little-endian)
+ * @return The float value represented by the bytes
+ *
+ * Data is stored in little-endian IEEE 754 single-precision format.
+ * Bytes are combined into a uint32_t and then reinterpreted as a float using
+ * memcpy to avoid strict aliasing violations.
+ *
+ * Example: bytes 0x00 0x00 0x80 0x3F -> float 1.0
+ *
+ * Note: Some NMEA 2000 fields use scaled integers instead of floats.
+ * Verify the PGN specification before using this function.
+ */
 inline float N2KToFloat(const uint8_t* data) {
   float result;
   uint32_t temp = (static_cast<uint32_t>(data[0])) |
@@ -334,6 +349,22 @@ inline float N2KToFloat(const uint8_t* data) {
   return result;
 }
 
+/**
+ * Converts 2 bytes of NMEA 2000 data to an unsigned 16-bit integer
+ *
+ * @param data Pointer to bytes in the NMEA 2000 message (2 bytes,
+ * little-endian)
+ * @return Raw unsigned 16-bit integer value
+ *
+ * Data is stored in little-endian order (LSB first).
+ * Example: bytes 0x02 0x02 -> uint16_t 0x0202 = 514
+ *
+ * Invalid/unavailable values are typically indicated by 0xFFFF.
+ */
+inline uint16_t N2KToInt16(const uint8_t* data) {
+  return data[0] | (data[1] << 8);  // little-endian uint16
+}
+
 void vdr_pi::OnN2KEvent(wxCommandEvent& event) {
   if (!m_protocols.nmea2000) {
     // NMEA 2000 recording is disabled.
@@ -341,30 +372,32 @@ void vdr_pi::OnN2KEvent(wxCommandEvent& event) {
   }
 
   ObservedEvt& ev = dynamic_cast<ObservedEvt&>(event);
-  // Get PGN from event
-  NMEA2000Id id(ev.GetId());
+  // Get payload and source
+  std::vector<uint8_t> payload = GetN2000Payload(0, ev);  // ID does not matter.
+  // Extract PGN from payload (bytes 3-5, little endian)
+  if (payload.size() < 6) {
+    return;  // Not enough bytes for valid message
+  }
+  uint32_t pgn = payload[3] | (payload[4] << 8) | (payload[5] << 16);
 
   // Check for COG & SOG, Rapid Update PGN (129026)
-  if (id.id == 129026) {
-    // Get binary payload
-    std::vector<uint8_t> payload = GetN2000Payload(id, ev);
-
+  if (pgn == 129026) {
     // COG & SOG message format:
     // Byte 0: SID
     // Byte 1: COG Reference (0=True, 1=Magnetic)
     // Byte 2-5: COG (float, radians)
-    // Byte 6-9: SOG (float, knots)
-    if (payload.size() >= 10) {
-      // Extract SOG value (float, 4 bytes, little-endian)
-      float speed = N2KToFloat(&payload[6]);
+    // Byte 6-9: SOG (float, meters per second)
+    if (payload.size() >= 19) {  // 11 header bytes + 8 data bytes
+      // Extract SOG value (uint16, 2 bytes, little-endian)
+      uint16_t raw_sog = N2KToInt16(&payload[17]);
 
-      // Convert to double for consistency with NMEA 0183 handling
-      double speed_knots = static_cast<double>(speed);
+      // Convert to m/s using NMEA 2000 resolution, then to knots.
+      float speed_knots = (raw_sog * 0.01f) * 1.94384f;
 
-      // Update last known speed
+      // Update last known speed.
       m_last_speed = speed_knots;
 
-      // Check if we should start/stop recording based on speed
+      // Check if we should start/stop recording based on speed.
       CheckAutoRecording(speed_knots);
     }
   }
@@ -373,30 +406,27 @@ void vdr_pi::OnN2KEvent(wxCommandEvent& event) {
     return;
   }
 
-  // Get binary payload and source
-  std::vector<uint8_t> payload = GetN2000Payload(id, ev);
-  std::string source = GetN2000Source(id, ev);
-
-  // Convert binary payload to hex string for logging
-  wxString hex_payload;
-  for (const auto& byte : payload) {
-    hex_payload += wxString::Format("%02X", byte);
+  // Convert payload for logging
+  wxString log_payload;
+  for (size_t i = 0; i < payload.size(); i++) {
+    log_payload += wxString::Format("%02X", payload[i]);
   }
 
   // Format N2K message for recording.
   wxString formatted_message;
   switch (m_data_format) {
     case VDRDataFormat::CSV: {
-      // CSV format: timestamp,type,source,pgn,payload
+      // CSV format: timestamp,type,id,payload
+      // where "id" is the PGN number.
       wxString timestamp = FormatIsoDateTime(wxDateTime::UNow());
-      formatted_message = wxString::Format("%s,NMEA2000,%s,%d,%s\n", timestamp,
-                                           source, id.id, hex_payload);
+      formatted_message =
+          wxString::Format("%s,NMEA2000,%d,%s\n", timestamp, pgn, log_payload);
       break;
     }
     case VDRDataFormat::RawNMEA:
-      // PCDIN format: $PCDIN,<pgn>,<source>,<payload>
+      // PCDIN format: $PCDIN,<pgn>,<payload>
       formatted_message =
-          wxString::Format("$PCDIN,%d,%s,%s\r\n", id.id, source, hex_payload);
+          wxString::Format("$PCDIN,%d,%s\r\n", pgn, log_payload);
       break;
   }
 
@@ -420,7 +450,8 @@ wxString vdr_pi::FormatNMEA0183AsCSV(const wxString& nmea) {
   escaped.Replace("\"", "\"\"");
   escaped = wxString::Format("\"%s\"", escaped);
 
-  return wxString::Format("%s,%s,%s\n", timestamp, type, escaped);
+  // Format CSV line: timestamp,type,id,message
+  return wxString::Format("%s,%s,,%s\n", timestamp, type, escaped);
 }
 
 void vdr_pi::SetNMEASentence(wxString& sentence) {
@@ -430,12 +461,12 @@ void vdr_pi::SetNMEASentence(wxString& sentence) {
   }
   // Check for RMC sentence to get speed and check for auto-recording.
   // There can be different talkers on the stream so look at the message type
-  // irespective of the talker
+  // irrespective of the talker.
   if (sentence.size() >= 6 && sentence.substr(3, 3) == "RMC") {
     wxStringTokenizer tkz(sentence, wxT(","));
     wxString token;
 
-    // Skip to speed field (field 7)
+    // Skip to speed field (field 7), which is the speed over ground in knots.
     for (int i = 0; i < 7 && tkz.HasMoreTokens(); i++) {
       token = tkz.GetNextToken();
     }
@@ -445,7 +476,6 @@ void vdr_pi::SetNMEASentence(wxString& sentence) {
       if (!token.IsEmpty()) {
         double speed;
         if (token.ToDouble(&speed)) {
-          // Convert from knots to desired units if needed
           m_last_speed = speed;
           CheckAutoRecording(speed);
         }
@@ -707,7 +737,7 @@ void vdr_pi::Notify() {
         int interval =
             static_cast<int>(BASE_INTERVAL_MS / GetSpeedMultiplier());
 
-        // Schedule next batch
+        // Schedule next batch.
         m_timer->Start(interval, wxTIMER_ONE_SHOT);
       }
 
@@ -998,7 +1028,7 @@ void vdr_pi::StartRecording() {
 
   // Write CSV header if needed
   if (m_data_format == VDRDataFormat::CSV) {
-    m_ostream.Write("timestamp,type,message\n");
+    m_ostream.Write("timestamp,type,id,message\n");
   }
 
   m_recording = true;

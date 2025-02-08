@@ -684,8 +684,19 @@ private:
    */
   bool m_auto_start_recording;
   bool m_use_speed_threshold;  //!< Use speed threshold for auto recording.
-  double m_speed_threshold;    //!< Speed threshold for auto recording.
-  double m_last_speed;         //!< Last known speed over ground.
+  /**
+   * Speed threshold for auto recording, in knots.
+   */
+  double m_speed_threshold;
+  /**
+   * Last known speed over ground, in knots.
+   *
+   * The speed is used to determine when to start and stop recording based on
+   * the configured speed threshold. The speed is received from:
+   * 1. The RMC sentence for NMEA 0183 recordings.
+   * 2. The SOG field in NMEA 2000 PGN 129026 messages.
+   */
+  double m_last_speed;
   /**
    * Indicate user has manually disabled recording while auto-recording was in
    * progress.
