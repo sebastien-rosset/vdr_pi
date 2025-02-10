@@ -339,11 +339,12 @@ void VDRPrefsDialog::OnOK(wxCommandEvent& event) {
 }
 
 void VDRPrefsDialog::OnDirSelect(wxCommandEvent& event) {
-  wxDirDialog dlg(this, _("Choose a directory"), m_recording_dir,
-                  wxDD_DEFAULT_STYLE | wxDD_DIR_MUST_EXIST);
+  wxString dir_spec;
+  int response = PlatformDirSelectorDialog(
+      this, &dir_spec, _("Choose a directory"), m_recording_dir);
 
-  if (dlg.ShowModal() == wxID_OK) {
-    m_recording_dir = dlg.GetPath();
+  if (response == wxID_OK) {
+    m_recording_dir = dir_spec;
     m_dirCtrl->SetValue(m_recording_dir);
   }
 }
