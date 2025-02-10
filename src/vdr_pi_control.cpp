@@ -108,9 +108,9 @@ void VDRControl::CreateControls() {
   int buttonSize = fontHeight * 1.2;  // Adjust multiplier as needed
 
   if (IsTouchInterface_PlugIn()) {
-    // Ensure minimum button size of 9 mm for touch usability
+    // Ensure minimum button size of 7 mm for touch usability
     double pixel_per_mm = wxGetDisplaySize().x / PlugInGetDisplaySizeMM();
-    int min_touch_size = 9 * pixel_per_mm;
+    int min_touch_size = 7 * pixel_per_mm;
     buttonSize = std::max(buttonSize, min_touch_size);
   }
   else
