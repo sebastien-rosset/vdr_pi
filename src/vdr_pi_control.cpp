@@ -106,8 +106,16 @@ void VDRControl::CreateControls() {
   // Calculate button dimensions based on font height
   int fontHeight = buttonFont->GetPointSize();
   int buttonSize = fontHeight * 1.2;  // Adjust multiplier as needed
-  // Ensure minimum size of 32 pixels for touch usability
-  buttonSize = std::max(buttonSize, 32);
+
+  if (IsTouchInterface_PlugIn()) {
+    // Ensure minimum button size of 9 mm for touch usability
+    double pixel_per_mm = wxGetDisplaySize().x / PlugInGetDisplaySizeMM();
+    int min_touch_size = 9 * pixel_per_mm;
+    buttonSize = std::max(buttonSize, min_touch_size);
+  }
+  else
+    buttonSize = std::max(buttonSize, 32);
+
 #ifdef __WXQT__
   // A simple way to get touch-compatible tool size
   wxRect tbRect = GetMasterToolbarRect();
