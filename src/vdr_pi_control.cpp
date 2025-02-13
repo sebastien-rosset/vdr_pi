@@ -19,6 +19,7 @@
 
 #include "vdr_pi_control.h"
 #include "vdr_pi.h"
+#include "icons.h"
 
 enum {
   ID_VDR_LOAD = wxID_HIGHEST + 1,
@@ -98,57 +99,40 @@ void VDRControl::CreateControls() {
   // Main vertical sizer
   wxBoxSizer* mainSizer = new wxBoxSizer(wxVERTICAL);
 
-  wxFont* baseFont = GetOCPNScaledFont_PlugIn("Dialog", 0);
-  SetFont(*baseFont);
-  wxFont* buttonFont = FindOrCreateFont_PlugIn(
-      baseFont->GetPointSize() * GetContentScaleFactor(), baseFont->GetFamily(),
-      baseFont->GetStyle(), baseFont->GetWeight());
-  // Calculate button dimensions based on font height
-  int fontHeight = buttonFont->GetPointSize();
-  int buttonSize = fontHeight * 1.2;  // Adjust multiplier as needed
-
-  if (IsTouchInterface_PlugIn()) {
-    // Ensure minimum button size of 7 mm for touch usability
-    double pixel_per_mm = wxGetDisplaySize().x / PlugInGetDisplaySizeMM();
-    int min_touch_size = 7 * pixel_per_mm;
-    buttonSize = std::max(buttonSize, min_touch_size);
-  }
-  else
-    buttonSize = std::max(buttonSize, 32);
+  // Ensure minimum button size of 7 mm for touch usability
+  double pixel_per_mm = wxGetDisplaySize().x / PlugInGetDisplaySizeMM();
+  m_buttonSize = 7 * pixel_per_mm;
 
 #ifdef __WXQT__
   // A simple way to get touch-compatible tool size
   wxRect tbRect = GetMasterToolbarRect();
-  buttonSize = std::max(buttonSize, tbRect.width / 2);
+  m_buttonSize = std::max(m_buttonSize, tbRect.width / 2);
 #endif
-  wxSize buttonDimension(buttonSize, buttonSize);
+  wxSize buttonDimension(m_buttonSize, m_buttonSize);
 
   // File information section
   wxBoxSizer* fileSizer = new wxBoxSizer(wxHORIZONTAL);
 
   // Settings button
-  m_settingsBtn =
-      new wxButton(this, ID_VDR_SETTINGS, wxString::FromUTF8("⚙️"),
-                   wxDefaultPosition, buttonDimension, wxBU_EXACTFIT);
-  m_settingsBtn->SetFont(*buttonFont);
-  m_settingsBtn->SetMinSize(buttonDimension);
-  m_settingsBtn->SetMaxSize(buttonDimension);
+  m_settingsBtn = new wxBitmapButton(
+      this, ID_VDR_SETTINGS,
+      GetBitmapFromSVGFile(_svg_settings, m_buttonSize, m_buttonSize),
+      wxDefaultPosition, buttonDimension, wxBU_EXACTFIT);
   m_settingsBtn->SetToolTip(_("Settings"));
   fileSizer->Add(m_settingsBtn, 0, wxALL, 2);
 
   // Load button
-  m_loadBtn = new wxButton(this, ID_VDR_LOAD, wxString::FromUTF8("📂"),
-                           wxDefaultPosition, buttonDimension, wxBU_EXACTFIT);
-  m_loadBtn->SetFont(*buttonFont);
-  m_loadBtn->SetMinSize(buttonDimension);
-  m_loadBtn->SetMaxSize(buttonDimension);
+  m_loadBtn = new wxBitmapButton(
+      this, ID_VDR_LOAD,
+      GetBitmapFromSVGFile(_svg_file_open, m_buttonSize, m_buttonSize),
+      wxDefaultPosition, buttonDimension, wxBU_EXACTFIT);
   m_loadBtn->SetToolTip(_("Load VDR File"));
   fileSizer->Add(m_loadBtn, 0, wxALL, 2);
 
   m_fileLabel =
       new wxStaticText(this, wxID_ANY, _("No file loaded"), wxDefaultPosition,
                        wxDefaultSize, wxST_ELLIPSIZE_START);
-  fileSizer->Add(m_fileLabel, 1, wxALL | wxALIGN_CENTER_VERTICAL, 2);
+  fileSizer->Add(m_fileLabel, 1, wxALL | wxEXPAND, 2);
 
   mainSizer->Add(fileSizer, 0, wxALL, 4);
 
@@ -160,12 +144,10 @@ void VDRControl::CreateControls() {
   m_pauseBtnTooltip = _("Pause Playback");
   m_stopBtnTooltip = _("End of File");
 
-  m_playPauseBtn =
-      new wxButton(this, ID_VDR_PLAY_PAUSE, wxString::FromUTF8("▶"),
-                   wxDefaultPosition, buttonDimension, wxBU_EXACTFIT);
-  m_playPauseBtn->SetFont(*buttonFont);
-  m_playPauseBtn->SetMinSize(buttonDimension);
-  m_playPauseBtn->SetMaxSize(buttonDimension);
+  m_playPauseBtn = new wxBitmapButton(
+      this, ID_VDR_PLAY_PAUSE,
+      GetBitmapFromSVGFile(_svg_play_circle, m_buttonSize, m_buttonSize),
+      wxDefaultPosition, buttonDimension, wxBU_EXACTFIT);
   m_playPauseBtn->SetToolTip(m_playBtnTooltip);
   controlSizer->Add(m_playPauseBtn, 0, wxALL, 3);
 
@@ -188,7 +170,7 @@ void VDRControl::CreateControls() {
   m_speedSlider =
       new wxSlider(this, wxID_ANY, 1, 1, 1000, wxDefaultPosition, wxDefaultSize,
                    wxSL_HORIZONTAL | wxSL_VALUE_LABEL);
-  speedSizer->Add(m_speedSlider, 1, wxEXPAND | wxALIGN_CENTER_VERTICAL, 0);
+  speedSizer->Add(m_speedSlider, 1, wxALL | wxEXPAND, 0);
   mainSizer->Add(speedSizer, 0, wxEXPAND | wxALL, 4);
 
   // Add status panel
@@ -314,13 +296,15 @@ void VDRControl::UpdateControls() {
 
   // Update the play/pause/stop button appearance
   if (isAtEnd) {
-    m_playPauseBtn->SetLabel(wxString::FromUTF8("⏹"));
+    m_playPauseBtn->SetBitmapLabel(
+        GetBitmapFromSVGFile(_svg_stop_circle, m_buttonSize, m_buttonSize));
     m_playPauseBtn->SetToolTip(m_stopBtnTooltip);
     m_progressSlider->SetValue(1000);
     UpdateFileStatus(_("End of file"));
   } else {
-    m_playPauseBtn->SetLabel(isPlaying ? wxString::FromUTF8("⏸")
-                                       : wxString::FromUTF8("▶"));
+    m_playPauseBtn->SetBitmapLabel(
+        GetBitmapFromSVGFile(isPlaying ? _svg_pause_circle : _svg_play_circle,
+                             m_buttonSize, m_buttonSize));
     m_playPauseBtn->SetToolTip(isPlaying ? m_pauseBtnTooltip
                                          : m_playBtnTooltip);
   }

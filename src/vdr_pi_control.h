@@ -173,6 +173,8 @@ private:
   wxStaticText* m_networkStatusLabel;   //!< Label showing network status.
   wxStaticText* m_playbackStatusLabel;  //!< Label showing playback status.
 
+  int m_buttonSize;  //!< Size of SVG button icons.
+
   DECLARE_EVENT_TABLE()
 };
 

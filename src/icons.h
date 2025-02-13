@@ -4,7 +4,7 @@
 
 #include <wx/wxprec.h>
 #ifndef WX_PRECOMP
-#  include <wx/wx.h>
+#include <wx/wx.h>
 #endif
 
 #include <wx/bitmap.h>
@@ -14,18 +14,18 @@
 
 extern void initialize_images(void);
 
-extern wxBitmap *_img_vdr_pi;
-extern wxBitmap *_img_vdr_play;
-extern wxBitmap *_img_vdr_record;
+extern wxString _svg_vdr;
+extern wxString _svg_vdr_play;
+extern wxString _svg_vdr_record;
+extern wxString _svg_play_rollover;
+extern wxString _svg_play_toggled;
+extern wxString _svg_record_rollover;
+extern wxString _svg_record_toggled;
 
-#ifdef VDR_USE_SVG
-   extern wxString _svg_vdr;
-   extern wxString _svg_vdr_play;
-   extern wxString _svg_vdr_record;
-   extern wxString _svg_play_rollover;
-   extern wxString _svg_play_toggled;
-   extern wxString _svg_record_rollover;
-   extern wxString _svg_record_toggled;
-#endif
+extern wxString _svg_settings;
+extern wxString _svg_file_open;
+extern wxString _svg_play_circle;
+extern wxString _svg_pause_circle;
+extern wxString _svg_stop_circle;
 
 #endif /* ICONS_H */
