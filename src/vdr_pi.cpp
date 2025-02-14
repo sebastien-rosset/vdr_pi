@@ -120,7 +120,6 @@ int vdr_pi::Init(void) {
     SetToolbarToolStatus(m_tb_item_id_record, true);
   }
 
-#ifdef VDR_USE_SVG
   m_tb_item_id_record =
       InsertPlugInToolSVG(_T( "VDR" ), _svg_vdr_record, _svg_record_toggled,
                           _svg_record_toggled, wxITEM_CHECK, _("VDR Record"),
@@ -129,15 +128,6 @@ int vdr_pi::Init(void) {
       _T( "VDR" ), _svg_vdr_play, _svg_play_toggled, _svg_play_toggled,
       wxITEM_CHECK, _("VDR Play"), _T( "" ), NULL, VDR_TOOL_POSITION, 0, this);
   m_recording = false;
-#else
-  m_tb_item_id_record = InsertPlugInTool(
-      _T(""), _img_vdr_record, _img_vdr_record, wxITEM_CHECK, _("VDR Record"),
-      _T(""), NULL, VDR_TOOL_POSITION, 0, this);
-  m_tb_item_id_play =
-      InsertPlugInTool(_T(""), _img_vdr_play, _img_vdr_play, wxITEM_CHECK,
-                       _("VDR Play"), _T(""), NULL, VDR_TOOL_POSITION, 0, this);
-  m_recording = false;
-#endif
 
   return (WANTS_TOOLBAR_CALLBACK | INSTALLS_TOOLBAR_TOOL | WANTS_CONFIG |
           WANTS_NMEA_SENTENCES | WANTS_AIS_SENTENCES | WANTS_PREFERENCES);

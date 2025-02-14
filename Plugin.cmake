@@ -23,8 +23,6 @@ set(OCPN_RELEASE_REPO
     "opencpn/vdr-prod"
     CACHE STRING "Default repository for tagged builds not matching 'beta'"
 )
-option(VDR_USE_SVG "Use SVG graphics" ON)
-
 
 #
 #
@@ -66,14 +64,6 @@ set(SRC
 
 
 set(PKG_API_LIB api-18)  #  A directory in libs/ e. g., api-18 or api-19
-
-macro(late_init)
-  # Perform initialization after the PACKAGE_NAME library, compilers
-  # and ocpn::api is available.
-  if (VDR_USE_SVG)
-    target_compile_definitions(${PACKAGE_NAME} PUBLIC VDR_USE_SVG)
-  endif ()
-endmacro ()
 
 macro(add_plugin_libraries)
   # Add libraries required by this plugin
