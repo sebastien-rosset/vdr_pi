@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: vdr_pi 1.3.62.0\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2025-02-15 22:03+0100\n"
+"POT-Creation-Date: 2025-02-15 22:16+0100\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -53,16 +53,6 @@ msgstr ""
 
 #: src/vdr_pi.cpp:828
 msgid "Stop playback before starting recording."
-msgstr ""
-
-#: src/vdr_pi.cpp:1007
-#, c-format
-msgid "Failed to create recording directory: %s"
-msgstr ""
-
-#: src/vdr_pi.cpp:1014
-#, c-format
-msgid "Failed to create recording file: %s"
 msgstr ""
 
 #: src/vdr_pi.cpp:1076
@@ -211,20 +201,6 @@ msgstr ""
 
 #: src/vdr_pi_prefs.cpp:344
 msgid "Choose a directory"
-msgstr ""
-
-#: src/vdr_network.cpp:59
-#, c-format
-msgid "Invalid port %d (must be 1024-65535)"
-msgstr ""
-
-#: src/vdr_network.cpp:143
-msgid "Failed to set TCP socket hostname"
-msgstr ""
-
-#: src/vdr_network.cpp:149
-#, c-format
-msgid "Failed to set TCP port %d"
 msgstr ""
 
 #: src/vdr_network.cpp:164

@@ -1004,14 +1004,14 @@ void vdr_pi::StartRecording() {
   // Ensure directory exists
   if (!wxDirExists(m_recording_dir)) {
     if (!wxMkdir(m_recording_dir)) {
-      wxLogError(_("Failed to create recording directory: %s"),
+      wxLogError("Failed to create recording directory: %s",
                  m_recording_dir);
       return;
     }
   }
 
   if (!m_ostream.Open(fullpath, wxFile::write)) {
-    wxLogError(_("Failed to create recording file: %s"), fullpath);
+    wxLogError("Failed to create recording file: %s", fullpath);
     return;
   }
   wxLogMessage("Start recording to file: %s", fullpath);
