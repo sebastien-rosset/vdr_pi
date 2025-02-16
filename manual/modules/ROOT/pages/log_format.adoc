@@ -1,0 +1,50 @@
+= VDR Log Format Specification
+
+== Overview
+This specification defines a CSV-based format for logging NMEA0183, NMEA2000, and SignalK data. The format follows the RFC 4180 CSV specification.
+
+== File Format
+* UTF-8 encoding
+* Line endings: LF (\n)
+* First line contains header
+* Fields separated by comma (,)
+* Fields containing special characters (comma, quotes, newlines) must be enclosed in double quotes
+* Double quotes within fields must be escaped by doubling: `""`
+
+== Required Fields
+=== timestamp
+* ISO 8601 format with millisecond precision, UTC
+* Format: YYYY-MM-DDThh:mm:ss.sssZ
+* Example: `2024-02-16T10:00:00.123Z`
+
+=== type
+* Enumerated string
+* Valid values: `NMEA0183`, `NMEA2000`, `SignalK`
+* Case sensitive
+
+=== source
+* Physical or logical source identifier
+* Must be quoted if contains spaces or comma
+* Examples: `"COM3 Port 1"`, `"CAN Bus 1"`, `"TCP 10.0.0.1:3000"`
+
+=== raw_data
+* NMEA0183: Complete sentence including checksum
+* NMEA2000: Hex bytes including header, CAN ID
+* SignalK: Complete JSON with escaped quotes
+
+== Example
+[source,csv]
+----
+timestamp,type,source,raw_data
+2024-02-16T10:00:00.123Z,NMEA0183,"COM3 Port 1",$GPGGA,123519,4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,*47
+2024-02-16T10:00:00.234Z,NMEA2000,"CAN Bus 1",18EF0003FF0300DD6789ABCD
+2024-02-16T10:00:00.345Z,SignalK,"TCP 10.0.0.1:3000","{""updates"":[{""values"":[{""path"":""navigation.speedThroughWater"",""value"":4.85}]}]}"
+----
+
+== Notes
+* All timestamps must be in UTC
+* The timestamps should be from a single time source, in monotonically increasing order, except when the time of the source is updated. This should not be confused with other time fields that may be contained in the raw data
+* The timestamps should be assigned as close as possible to the generation of the messages
+* Malformed or corrupted data should still be logged with original content preserved
+* File extension: `.csv`
+
