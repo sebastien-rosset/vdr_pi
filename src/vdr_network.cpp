@@ -56,7 +56,7 @@ bool VDRNetworkServer::Start(bool useTCP, int port, wxString& error) {
 
   // Validate port number
   if (port < 1024 || port > 65535) {
-    error = wxString::Format(_("Invalid port %d (must be 1024-65535)"), port);
+    error = wxString::Format("Invalid port %d (must be 1024-65535)", port);
     wxLogMessage(error);
     return false;
   }
@@ -140,13 +140,13 @@ bool VDRNetworkServer::SendImpl(const void* data, size_t length) {
 bool VDRNetworkServer::InitTCP(int port, wxString& error) {
   wxIPV4address addr;
   if (!addr.Hostname("127.0.0.1")) {
-    error = _("Failed to set TCP socket hostname");
+    error = "Failed to set TCP socket hostname";
     wxLogMessage(error);
     return false;
   }
 
   if (!addr.Service(port)) {
-    error = wxString::Format(_("Failed to set TCP port %d"), port);
+    error = wxString::Format("Failed to set TCP port %d", port);
     wxLogMessage(error);
     return false;
   }

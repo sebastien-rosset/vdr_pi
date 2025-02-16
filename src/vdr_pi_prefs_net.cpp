@@ -53,7 +53,7 @@ ConnectionSettingsPanel::ConnectionSettingsPanel(
 
   // Port number
   wxBoxSizer* portSizer = new wxBoxSizer(wxHORIZONTAL);
-  portSizer->Add(new wxStaticText(this, wxID_ANY, _("Port:")), 0,
+  portSizer->Add(new wxStaticText(this, wxID_ANY, _("Data Port:")), 0,
                  wxALIGN_CENTER_VERTICAL | wxRIGHT, 5);
 
   m_portCtrl = new wxSpinCtrl(this, wxID_ANY, wxEmptyString, wxDefaultPosition,
