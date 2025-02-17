@@ -4,18 +4,73 @@
 This specification defines a CSV-based format for logging NMEA0183, NMEA2000, and SignalK data. The format follows the RFC 4180 CSV specification.
 
 == File Format
-* UTF-8 encoding
-* Line endings: LF (\n)
-* First line contains header
-* Fields separated by comma (,)
-* Fields containing special characters (comma, quotes, newlines) must be enclosed in double quotes
+
+=== Basic Format
+
+Data is encoded using CSV format as specified in link:https://www.ietf.org/rfc/rfc4180.txt[RFC 4180].
+
+* UTF-8 encoding - Required for compatibility with SignalK JSON data which mandates UTF-8 encoding.
+  See link:https://signalk.org/specification/1.7.0/doc/data_model.html[Signal K Data Model].
+* Line endings: CRLF (\r\n)
+* Fields are separated by comma (,)
+* Fields containing special characters (comma, quotes, newlines) must be enclosed in double quotes.
 * Double quotes within fields must be escaped by doubling: `""`
+* File extension should be `.csv`
+
+Note: UTF-8 is backwards compatible with ASCII.
+
+=== Comments
+* Lines beginning with # are treated as comments and ignored
+* Comments can appear anywhere in the file
+* Comments are useful for metadata and documentation
+* Comments must appear on their own line
+
+=== Header
+* First non-comment line must contain the CSV header as specified in link:https://www.ietf.org/rfc/rfc4180.txt[RFC 4180]
+* Header defines the field names for the columns
+* Field names are case-sensitive
+
+=== Forward Compatibility
+* Parsers must not assume fixed positions for fields
+* Field positions should be determined by reading the CSV header
+* Parsers must ignore unknown fields
+* Additional fields may be added in future versions of this specification
+* All required fields must be present, but their order may vary
+
+.Example file with comments and header
+[source,csv]
+----
+# VDR Log File
+# Created: 2024-02-16T10:00:00Z
+# Device: MarineLogger v1.0
+# Configuration:
+#   - NMEA0183 on COM3
+#   - NMEA2000 on CAN0
+#   - SignalK server on TCP 10.0.0.1:3000
+
+rx_timestamp,type,source,raw_data
+2024-02-16T10:00:00.123Z,NMEA0183,"COM3/NMEA0183/GP",$GPGGA,123519,4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,*47
+----
 
 == Required Fields
-=== timestamp
-* ISO 8601 format with millisecond precision, UTC
+
+=== rx_timestamp
+* Indicates when the message was received/logged by the system. Note this might be different from the time when the source instrument generated the data.
+* Timestamps are in ISO 8601 format – specifically the RFC 3339 extension format, which is slightly more strict than the ISO specification.
+* Timestamps have millisecond precision in UTC.
 * Format: YYYY-MM-DDThh:mm:ss.sssZ
+* This format matches SignalK timestamp requirements (RFC 3339)
 * Example: `2024-02-16T10:00:00.123Z`
+* Timestamp assignment:
+** For messages that include their own timestamp (like SignalK updates or NMEA2000 PGNs with time fields):
+   - The log timestamp should be when the message was received/logged
+   - The original message timestamp is preserved in the raw_data field
+** For messages without timestamps:
+   - The log timestamp should be set as close as possible to when the message was received.
+** Timestamps must be monotonically increasing.
+** Time jumps may occur when:
+   - System time is updated (e.g., GPS fix acquired)
+   - Time source changes
 
 === type
 * Enumerated string
@@ -23,28 +78,65 @@ This specification defines a CSV-based format for logging NMEA0183, NMEA2000, an
 * Case sensitive
 
 === source
-* Physical or logical source identifier
-* Must be quoted if contains spaces or comma
-* Examples: `"COM3 Port 1"`, `"CAN Bus 1"`, `"TCP 10.0.0.1:3000"`
+* String identifier for the physical or logical data source.
+* Examples:
+  - `ttyUSB0`
+  - `CAN0`
+  - `"TCP 192.168.1.1:8375"`
+  - `COM3`
 
 === raw_data
-* NMEA0183: Complete sentence including checksum
-* NMEA2000: Hex bytes including header, CAN ID
-* SignalK: Complete JSON with escaped quotes
+* Format depends on type:
+  - NMEA0183: Complete sentence including checksum
+  - NMEA2000: Hex bytes including header, CAN ID
+  - SignalK: Complete JSON delta message with proper CSV escaping
 
 == Example
 [source,csv]
 ----
-timestamp,type,source,raw_data
+rx_timestamp,type,source,raw_data
 2024-02-16T10:00:00.123Z,NMEA0183,"COM3 Port 1",$GPGGA,123519,4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,*47
 2024-02-16T10:00:00.234Z,NMEA2000,"CAN Bus 1",18EF0003FF0300DD6789ABCD
 2024-02-16T10:00:00.345Z,SignalK,"TCP 10.0.0.1:3000","{""updates"":[{""values"":[{""path"":""navigation.speedThroughWater"",""value"":4.85}]}]}"
 ----
 
-== Notes
-* All timestamps must be in UTC
-* The timestamps should be from a single time source, in monotonically increasing order, except when the time of the source is updated. This should not be confused with other time fields that may be contained in the raw data
-* The timestamps should be assigned as close as possible to the generation of the messages
-* Malformed or corrupted data should still be logged with original content preserved
-* File extension: `.csv`
+== Optional Fields
 
+=== instrument_timestamp
+* Optional timestamp from the instrument or gateway
+* Same format as rx_timestamp
+* Source depends on type:
+  - NMEA2000: Timestamp from PGN if available
+  - NMEA0183: Time field from sentence if available
+  - SignalK: timestamp field from gateway
+* May be empty if source has no timestamp
+
+== Raw Message Logging
+* All messages must be logged exactly as received, without modification
+* This includes:
+  - Messages with invalid checksums
+  - Messages with incorrect formats
+  - Messages with invalid characters
+  - Incomplete or truncated messages
+  - Messages with incorrect field counts
+  - Messages with out-of-range values
+* No filtering or correction should be applied to the raw_data field
+
+=== Purpose
+* High-fidelity logging enables:
+  - Troubleshooting of communication issues
+  - Analysis of device behavior
+  - Exact replay of problematic sequences
+  - Verification of data quality
+  - Debugging of protocol implementations
+
+=== Examples of Preserved Issues
+[source,csv]
+----
+# Examples of various message issues that should be preserved
+rx_timestamp,type,source,raw_data
+2024-02-16T10:00:00.123Z,NMEA0183,"COM3/NMEA0183/GP",$GPGGA,123519,4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,*XX
+2024-02-16T10:00:00.124Z,NMEA0183,"COM3/NMEA0183/GP",$GPGG@,123519,4807.
+2024-02-16T10:00:00.125Z,NMEA2000,"CAN0/NMEA2000",18EF0003XX0300INVALID
+2024-02-16T10:00:00.126Z,SignalK,"TCP/SignalK","{""updates"":[{""values:TRUNCATED"
+----
