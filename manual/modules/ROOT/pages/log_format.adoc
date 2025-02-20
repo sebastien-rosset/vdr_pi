@@ -1,0 +1,152 @@
+= VDR Log Format Specification
+
+== Overview
+This specification defines a CSV-based format for logging NMEA0183, NMEA2000, and SignalK data. The format follows the RFC 4180 CSV specification.
+
+== File Format
+
+=== Basic Format
+
+Data is encoded using CSV format as specified in link:https://www.ietf.org/rfc/rfc4180.txt[RFC 4180].
+
+* UTF-8 encoding - Required for compatibility with SignalK JSON data which mandates UTF-8 encoding.
+  See link:https://signalk.org/specification/1.7.0/doc/data_model.html[Signal K Data Model].
+* Line endings: CRLF (\r\n)
+* Fields are separated by comma (,)
+* Fields containing special characters (comma, quotes, newlines) must be enclosed in double quotes.
+* Double quotes within fields must be escaped by doubling: `""`
+* File extension should be `.csv`
+
+Note: UTF-8 is backwards compatible with ASCII.
+
+=== Comments
+* Lines beginning with # are treated as comments and ignored
+* Comments can appear anywhere in the file
+* Comments are useful for metadata and documentation
+* Comments must appear on their own line
+
+=== Header
+* First non-comment line must contain the CSV header as specified in link:https://www.ietf.org/rfc/rfc4180.txt[RFC 4180]
+* Header defines the field names for the columns
+* Field names are case-sensitive
+
+=== Forward Compatibility
+* Parsers must not assume fixed positions for fields
+* Field positions should be determined by reading the CSV header
+* Parsers must ignore unknown fields
+* Additional fields may be added in future versions of this specification
+* All required fields must be present, but their order may vary
+
+.Example file with comments and header
+[source,csv]
+----
+# VDR Log File
+# Created: 2024-02-16T10:00:00Z
+# Device: MarineLogger v1.0
+# Configuration:
+#   - NMEA0183 on COM3
+#   - NMEA2000 on CAN0
+#   - SignalK server on TCP 10.0.0.1:3000
+
+timestamp,protocol,msg_type,source,raw_data
+2024-02-16T10:00:00.123Z,NMEA0183,GPGGA,"COM3/NMEA0183/GP",$GPGGA,123519,4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,*47
+----
+
+== Required Fields
+
+=== timestamp
+* Indicates when the message was received/logged by the system. Note this might be different from the time when the source instrument generated the data.
+* Timestamps are in ISO 8601 format – specifically the RFC 3339 extension format, which is slightly more strict than the ISO specification.
+* Timestamps have millisecond precision in UTC.
+* Format: YYYY-MM-DDThh:mm:ss.sssZ
+* This format matches SignalK timestamp requirements (RFC 3339)
+* Example: `2024-02-16T10:00:00.123Z`
+* Timestamp assignment:
+** For messages that include their own timestamp (like SignalK updates or NMEA2000 PGNs with time fields):
+   - The log timestamp should be when the message was received/logged
+   - The original message timestamp is preserved in the raw_data field
+** For messages without timestamps:
+   - The log timestamp should be set as close as possible to when the message was received.
+** Timestamps must be monotonically increasing.
+** Time jumps may occur when:
+   - System time is updated (e.g., GPS fix acquired)
+   - Time source changes
+
+=== protocol
+* Enumerated string
+* Valid values: `NMEA0183`, `NMEA2000`, `SignalK`
+* Case sensitive
+
+=== msg_type
+* Identifier for the specific type of message, format depends on protocol:
+  - NMEA0183: Combined talker ID and sentence type (e.g., "GPGGA")
+  - NMEA2000: PGN in decimal format (e.g., "61184")
+  - SignalK: The primary path from the update (e.g., "navigation.speedThroughWater")
+* Must be extracted from the raw_data
+* Case-sensitive
+* For malformed messages where the protocol cannot be extracted, field should be empty
+
+=== source
+* String identifier for the physical or logical data source.
+* Examples:
+  - `ttyUSB0`
+  - `CAN0`
+  - `"TCP 192.168.1.1:8375"`
+  - `COM3`
+
+=== raw_data
+* Format depends on protocol:
+  - NMEA0183: Complete sentence including checksum
+  - NMEA2000: Hex bytes including header, CAN ID
+  - SignalK: Complete JSON delta message with proper CSV escaping
+
+== Example
+[source,csv]
+----
+timestamp,protocol,msg_type,source,raw_data
+2024-02-16T10:00:00.123Z,NMEA0183,GPGGA,"COM3 Port 1",$GPGGA,123519,4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,*47
+2024-02-16T10:00:00.234Z,NMEA2000,61184,"CAN Bus 1",18EF0003FF0300DD6789ABCD
+2024-02-16T10:00:00.345Z,SignalK,navigation.speedThroughWater,"TCP 10.0.0.1:3000","{""updates"":[{""values"":[{""path"":""navigation.speedThroughWater"",""value"":4.85}]}]}"
+----
+
+== Optional Fields
+
+=== source_timestamp
+* Optional timestamp from the source that generated the data, such as the instrument or gateway.
+* Same format as timestamp
+* Source depends on protocol:
+  - NMEA2000: Timestamp from PGN if available
+  - NMEA0183: Time field from sentence if available
+  - SignalK: timestamp field from gateway
+* May be empty if source has no timestamp.
+* The sequence of source_timestamp may not be in chronological order because they may be emitted by different instruments.
+
+== Raw Message Logging
+* All messages must be logged exactly as received, without modification
+* This includes:
+  - Messages with invalid checksums
+  - Messages with incorrect formats
+  - Messages with invalid characters
+  - Incomplete or truncated messages
+  - Messages with incorrect field counts
+  - Messages with out-of-range values
+* No filtering or correction should be applied to the raw_data field
+
+=== Purpose
+High-fidelity logging enables:
+* Troubleshooting of communication issues
+* Analysis of device behavior
+* Exact replay of problematic sequences
+* Verification of data quality
+* Debugging of protocol implementations
+
+=== Examples of Preserved Issues
+[source,csv]
+----
+# Examples of various message issues that should be preserved
+timestamp,protocol,msg_type,source,raw_data
+2024-02-16T10:00:00.123Z,NMEA0183,GPGGA,"COM3/NMEA0183/GP",$GPGGA,123519,4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,*XX
+2024-02-16T10:00:00.124Z,NMEA0183,GPGG,"COM3/NMEA0183/GP",$GPGG@,123519,4807.
+2024-02-16T10:00:00.125Z,NMEA2000,61184,"CAN0/NMEA2000",18EF0003XX0300INVALID
+2024-02-16T10:00:00.126Z,SignalK,navigation.speedThroughWater,"TCP/SignalK","{""updates"":[{""values:TRUNCATED"
+----

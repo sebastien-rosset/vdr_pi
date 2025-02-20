@@ -31,7 +31,7 @@ In OpenCPN, go to the _Options → Plugins_ and download, install and enable the
 
 == 2. Purpose
 
-* Record and Play the Nmea0183 data stream in OpenCPN.
+* Record and Play NMEA0183, NMEA2000, and SignalK data streams in OpenCPN. See xref:log_format.adoc[Log Format Specification] for details on the recording format.
 
 * Use VDR for AIS Simulation - Run VDR to play AIS NMEA files. Or… use
 the VDR plugin to record your passages and replay them later! The VDR is
@@ -44,13 +44,50 @@ image::vdr-icons.png[]
 
 == 3. Preferences
 
-Configuration parameters to:
-1. Automatically start recording when plugin starts. Auto-recording is disabled by default.
-2. Optionally start/stop recording when speed exceeds threshold or goes below threshold.
-3. Optionally stop recording only after speed is below threshold for X minutes.
-The plugin uses the `RMC` sentence to get the speed.
+The VDR (Voyage Data Recorder) plugin offers several configuration options to control recording behavior and data management.
 
-image::VDR-Preferences.png[]
+== Recording Protocols
+* NMEA 0183: Select to record NMEA 0183 data streams.
+* NMEA 2000: Select to record NMEA 2000 data streams.
+
+== Recording Format
+Choose between two output formats:
+
+* Raw NMEA: Stores data in original NMEA format.
+* CSV with timestamps: Converts NMEA data to CSV format with added timestamp information.
+
+== Recording Directory
+Specify the location where VDR files will be stored. Default directory is `/Users/[username]/Documents/VDR`.
+Use the "Browse" button to select a different location.
+
+== VDR File Management
+* Enable automatic file rotation by checking "Create new VDR file every:".
+* Set the rotation interval in hours.
+* This helps manage file sizes and organize recordings by time periods.
+
+== Automatic Recording
+The plugin provides smart recording features to optimize data collection:
+
+=== Automatic Start
+Enable "Automatically start recording" to begin recording when OpenCPN starts.
+
+=== Speed-Based Recording
+* Set a speed threshold (in knots) to automatically start recording.
+* Recording begins when vessel speed exceeds the threshold.
+* Speed data is obtained from NMEA RMC sentences, PGN 129026.
+
+=== Recording Pause
+* Configure how long to continue recording after speed drops below threshold
+* Set the delay in minutes (default: 2 minutes)
+* This prevents frequent start/stop cycles when speed fluctuates around the threshold
+
+[NOTE]
+====
+All changes in preferences take effect immediately after clicking "OK". The "Cancel" button discards any changes made to the preferences.
+====
+
+.VDR Preferences Window
+image::VDR-Preferences.png[VDR Preferences,title="VDR Preferences Window"]
 
 Example log:
 ```
@@ -61,12 +98,11 @@ Example log:
 
 == 4. Operation
 
-* The left button is for recording, and leads to a “Choose file” dialog
-to select the file to record to. A file with a .txtfile extension works
-well.
-* The right button is for playing an existing file, and also leads to a
-dialog where the file must be selected. Once selected VDR starts to play
-the file,the small dialog below shows on the screen.
+* To start recording data immediately, click the "Record" button in the toolbar.
+The data is recorded in files named vdr_YYYYMMDDTHHMMSSZ.txt or vdr_YYYYMMDDTHHMMSSZ.csv
+depending on the preferences.
+* Click the "Play" button in the toolbar to display a dialog which can be
+used to replay VDR data or customize the preferences.
 
 image::vdr-control.png[]
 
@@ -105,3 +141,8 @@ image::nmea-debug-dsc.png[]
 
 Uncheck “Calculate SOG” option in Preferences. See
 http://www.cruisersforum.com/forums/f134/playback-vdr-from-recorded-file-201359.html#post2635729[Playbackfrom recorded file]
+
+=== 5.2 What file format is used for recording?
+
+The VDR plugin uses a CSV-based format that supports NMEA0183, NMEA2000, and SignalK data.
+See the xref:log_format.adoc[Log Format Specification] for details on the format and examples.
