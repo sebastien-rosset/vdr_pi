@@ -48,13 +48,13 @@ Note: UTF-8 is backwards compatible with ASCII.
 #   - NMEA2000 on CAN0
 #   - SignalK server on TCP 10.0.0.1:3000
 
-timestamp,protocol,msg_type,source,raw_data
+received_at,protocol,msg_type,source,raw_data
 2024-02-16T10:00:00.123Z,NMEA0183,GPGGA,"COM3/NMEA0183/GP",$GPGGA,123519,4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,*47
 ----
 
 == Required Fields
 
-=== timestamp
+=== received_at
 * Indicates when the message was received/logged by the system. Note this might be different from the time when the source instrument generated the data.
 * Timestamps are in ISO 8601 format – specifically the RFC 3339 extension format, which is slightly more strict than the ISO specification.
 * Timestamps have millisecond precision in UTC.
@@ -103,7 +103,7 @@ timestamp,protocol,msg_type,source,raw_data
 == Example
 [source,csv]
 ----
-timestamp,protocol,msg_type,source,raw_data
+received_at,protocol,msg_type,source,raw_data
 2024-02-16T10:00:00.123Z,NMEA0183,GPGGA,"COM3 Port 1",$GPGGA,123519,4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,*47
 2024-02-16T10:00:00.234Z,NMEA2000,61184,"CAN Bus 1",18EF0003FF0300DD6789ABCD
 2024-02-16T10:00:00.345Z,SignalK,navigation.speedThroughWater,"TCP 10.0.0.1:3000","{""updates"":[{""values"":[{""path"":""navigation.speedThroughWater"",""value"":4.85}]}]}"
@@ -111,7 +111,7 @@ timestamp,protocol,msg_type,source,raw_data
 
 == Optional Fields
 
-=== source_timestamp
+=== sent_at
 * Optional timestamp from the source that generated the data, such as the instrument or gateway.
 * Same format as timestamp
 * Source depends on protocol:
@@ -144,7 +144,7 @@ High-fidelity logging enables:
 [source,csv]
 ----
 # Examples of various message issues that should be preserved
-timestamp,protocol,msg_type,source,raw_data
+received_at,protocol,msg_type,source,raw_data
 2024-02-16T10:00:00.123Z,NMEA0183,GPGGA,"COM3/NMEA0183/GP",$GPGGA,123519,4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,*XX
 2024-02-16T10:00:00.124Z,NMEA0183,GPGG,"COM3/NMEA0183/GP",$GPGG@,123519,4807.
 2024-02-16T10:00:00.125Z,NMEA2000,61184,"CAN0/NMEA2000",18EF0003XX0300INVALID
